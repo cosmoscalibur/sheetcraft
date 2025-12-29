@@ -342,9 +342,9 @@ fn parse_sheet_qualified_ref(content: &str, result: &mut String, current_sheet_n
         let mut end_cell = end_part;
 
         // ODS shortcut: Sheet1.A1:.B2
-        if end_part.starts_with('.') {
+        if let Some(stripped) = end_part.strip_prefix('.') {
             end_sheet = start_sheet;
-            end_cell = &end_part[1..];
+            end_cell = stripped;
         } else if let Some((s, c)) = end_part.split_once('.') {
             end_sheet = s;
             end_cell = c;
@@ -572,6 +572,8 @@ pub struct OdsReader<'a, R: std::io::Read + std::io::Seek> {
     data: Option<OdsData>,
 }
 
+const MAX_COLUMNS: u32 = 16384;
+
 impl<'a, R: std::io::Read + std::io::Seek> OdsReader<'a, R> {
     pub fn new(archive: &'a mut ZipArchive<R>) -> Result<Self> {
         Ok(Self {
@@ -623,7 +625,6 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         let mut current_cf_range: Option<String> = None;
         let mut skip_current_sheet = false; // Flag to skip external sheets
 
-        // Track visible row numbering for ODS formulas
         // ODS formulas use 1-indexed visible row numbers (accounting for hidden rows)
         // but we store cells using 0-indexed XML row numbers
         let mut visible_row_counter = 1u32; // 1-indexed (ODS formula style)
@@ -632,6 +633,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         // ============================================================
         // PARSE styles.xml FIRST to populate date_styles
         // ============================================================
+
         if let Ok(styles_xml) = self.archive.by_name("styles.xml") {
             let mut reader = Reader::from_reader(BufReader::new(styles_xml));
             reader.config_mut().trim_text(false);
@@ -1142,11 +1144,13 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         let is_hidden =
                             !style_name.is_empty() && hidden_styles.contains(&style_name);
                         new_sheet.visible = !is_hidden;
+
                         current_sheet = Some(new_sheet);
                         current_row = 0;
                         current_col = 0; // Reset column tracking for new sheet
                         skip_current_sheet = false; // Reset skip flag for new sheet
                     }
+
                     // Detect external sheets by checking for table:table-source
                     Event::Start(ref e) | Event::Empty(ref e)
                         if e.name().as_ref() == b"table:table-source" =>
@@ -1294,6 +1298,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             }
                         }
                     }
+
                     Event::Empty(e) if e.name().as_ref() == b"table:table-row" => {
                         // Empty row (self-closing tag) - no cells, just increment row counter
                         row_repeated = 1;
@@ -1470,55 +1475,67 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             }
 
                             if has_value || formula.is_some() || !style_name.is_empty() {
-                                let mut cell_value = value;
-                                if let Some(f) = formula {
-                                    cell_value = match cell_value {
-                                        CellValue::Formula {
-                                            cached_error: Some(msg),
-                                            ..
-                                        } => CellValue::formula_with_error(f, msg),
-                                        _ => CellValue::formula(f),
-                                    };
-                                }
-
-                                // Look up format string from style
-                                let num_fmt = if !style_name.is_empty() {
-                                    date_styles.get(&style_name).cloned()
-                                } else {
-                                    None
-                                };
-
-                                // Check if this is a text-formatted number
-                                // In ODS, text format is indicated by num_fmt == "@"
-                                if num_fmt.as_deref() == Some("@")
-                                    && let CellValue::Number(n) = cell_value
+                                // Optimization: Ignore empty styled cells that extend to the sheet edge
+                                // These are often used as "row filler" in ODS (e.g., repeatedly 16300+ times)
+                                // and cause massive memory usage if stored as individual cells.
+                                let is_empty_content = !has_value && formula.is_none();
+                                if is_empty_content
+                                    && !style_name.is_empty()
+                                    && (current_col + col_repeated >= MAX_COLUMNS)
                                 {
-                                    // Convert number to text
-                                    cell_value = CellValue::Text(n.to_string());
-                                }
-
-                                for r in 0..row_repeated {
-                                    for c in 0..col_repeated {
-                                        let cell = Cell {
-                                            row: current_row + r,
-                                            col: current_col + c,
-                                            value: cell_value.clone(),
-                                            num_fmt: num_fmt.clone(),
+                                    // Skip storing these cells
+                                    // Just advance the column counter
+                                } else {
+                                    let mut cell_value = value;
+                                    if let Some(f) = formula {
+                                        cell_value = match cell_value {
+                                            CellValue::Formula {
+                                                cached_error: Some(msg),
+                                                ..
+                                            } => CellValue::formula_with_error(f, msg),
+                                            _ => CellValue::formula(f),
                                         };
-                                        sheet
-                                            .cells
-                                            .insert((current_row + r, current_col + c), cell);
+                                    }
 
-                                        // Update used_range for any inserted cell (value, formula, or style)
-                                        let row_pos = current_row + r;
-                                        let col_pos = current_col + c;
-                                        if let Some((max_row, max_col)) = sheet.used_range {
-                                            sheet.used_range = Some((
-                                                max_row.max(row_pos + 1),
-                                                max_col.max(col_pos + 1),
-                                            ));
-                                        } else {
-                                            sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                    // Look up format string from style
+                                    let num_fmt = if !style_name.is_empty() {
+                                        date_styles.get(&style_name).cloned()
+                                    } else {
+                                        None
+                                    };
+
+                                    // Check if this is a text-formatted number
+                                    // In ODS, text format is indicated by num_fmt == "@"
+                                    if num_fmt.as_deref() == Some("@")
+                                        && let CellValue::Number(n) = cell_value
+                                    {
+                                        // Convert number to text
+                                        cell_value = CellValue::Text(n.to_string());
+                                    }
+
+                                    for r in 0..row_repeated {
+                                        for c in 0..col_repeated {
+                                            let cell = Cell {
+                                                row: current_row + r,
+                                                col: current_col + c,
+                                                value: cell_value.clone(),
+                                                num_fmt: num_fmt.clone(),
+                                            };
+                                            sheet
+                                                .cells
+                                                .insert((current_row + r, current_col + c), cell);
+
+                                            // Update used_range for any inserted cell (value, formula, or style)
+                                            let row_pos = current_row + r;
+                                            let col_pos = current_col + c;
+                                            if let Some((max_row, max_col)) = sheet.used_range {
+                                                sheet.used_range = Some((
+                                                    max_row.max(row_pos + 1),
+                                                    max_col.max(col_pos + 1),
+                                                ));
+                                            } else {
+                                                sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                            }
                                         }
                                     }
                                 }
@@ -1581,38 +1598,47 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
 
                             // If it's an empty cell but has a formula or style, we should store it.
                             if formula.is_some() || !style_name.is_empty() {
-                                let cell_value =
-                                    formula.map(CellValue::formula).unwrap_or(CellValue::Empty);
-
-                                // Look up format string from style
-                                let num_fmt = if !style_name.is_empty() {
-                                    date_styles.get(&style_name).cloned()
+                                // Optimization: Ignore empty styled cells that extend to the sheet edge
+                                let is_empty_content = formula.is_none(); // empty cell has no value by definition here
+                                if is_empty_content
+                                    && !style_name.is_empty()
+                                    && (current_col + col_repeated >= MAX_COLUMNS)
+                                {
+                                    // Skip storing these cells
                                 } else {
-                                    None
-                                };
+                                    let cell_value =
+                                        formula.map(CellValue::formula).unwrap_or(CellValue::Empty);
 
-                                for r in 0..row_repeated {
-                                    for c in 0..col_repeated {
-                                        let cell = Cell {
-                                            row: current_row + r,
-                                            col: current_col + c,
-                                            value: cell_value.clone(),
-                                            num_fmt: num_fmt.clone(),
-                                        };
-                                        sheet
-                                            .cells
-                                            .insert((current_row + r, current_col + c), cell);
+                                    // Look up format string from style
+                                    let num_fmt = if !style_name.is_empty() {
+                                        date_styles.get(&style_name).cloned()
+                                    } else {
+                                        None
+                                    };
 
-                                        // Update used_range for any inserted cell (formula or style)
-                                        let row_pos = current_row + r;
-                                        let col_pos = current_col + c;
-                                        if let Some((max_row, max_col)) = sheet.used_range {
-                                            sheet.used_range = Some((
-                                                max_row.max(row_pos + 1),
-                                                max_col.max(col_pos + 1),
-                                            ));
-                                        } else {
-                                            sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                    for r in 0..row_repeated {
+                                        for c in 0..col_repeated {
+                                            let cell = Cell {
+                                                row: current_row + r,
+                                                col: current_col + c,
+                                                value: cell_value.clone(),
+                                                num_fmt: num_fmt.clone(),
+                                            };
+                                            sheet
+                                                .cells
+                                                .insert((current_row + r, current_col + c), cell);
+
+                                            // Update used_range for any inserted cell (formula or style)
+                                            let row_pos = current_row + r;
+                                            let col_pos = current_col + c;
+                                            if let Some((max_row, max_col)) = sheet.used_range {
+                                                sheet.used_range = Some((
+                                                    max_row.max(row_pos + 1),
+                                                    max_col.max(col_pos + 1),
+                                                ));
+                                            } else {
+                                                sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                            }
                                         }
                                     }
                                 }
@@ -1753,10 +1779,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         // ============================================================
         // Resolve any cell styles that weren't resolved during parsing
         for (cell_style, data_style) in &cell_styles {
-            if !date_styles.contains_key(cell_style) {
-                if let Some(format) = data_styles.get(data_style) {
-                    date_styles.insert(cell_style.clone(), format.clone());
-                }
+            if !date_styles.contains_key(cell_style)
+                && let Some(format) = data_styles.get(data_style)
+            {
+                date_styles.insert(cell_style.clone(), format.clone());
             }
         }
         // Also add data styles directly to date_styles
