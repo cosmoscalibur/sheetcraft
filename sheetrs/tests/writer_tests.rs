@@ -88,7 +88,7 @@ fn create_mock_xlsx(path: &Path, sheets: &[&str], ranges: &[(&str, &str)]) -> an
 
     // 5. sheets
     for (i, _name) in sheets.iter().enumerate() {
-        zip.start_file(&format!("xl/worksheets/sheet{}.xml", i + 1), options)?;
+        zip.start_file(format!("xl/worksheets/sheet{}.xml", i + 1), options)?;
         zip.write_all(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>"#.as_bytes())?;
     }

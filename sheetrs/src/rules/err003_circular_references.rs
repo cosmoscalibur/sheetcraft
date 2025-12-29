@@ -54,7 +54,9 @@ impl LinterRule for CircularReferenceRule {
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
         // Global dependency graph: (Sheet, Row, Col) -> Vec<(Sheet, Row, Col)>
-        let mut dependencies: HashMap<(String, u32, u32), Vec<(String, u32, u32)>> = HashMap::new();
+        // Type alias to avoid clippy::type_complexity warning
+        type CellDependencyMap = HashMap<(String, u32, u32), Vec<(String, u32, u32)>>;
+        let mut dependencies: CellDependencyMap = HashMap::new();
 
         // 1. Build the global dependency graph
         for sheet in &workbook.sheets {
@@ -357,7 +359,7 @@ mod tests {
         let rule = CircularReferenceRule::new(&crate::config::LinterConfig::default());
         let violations = rule.check(&workbook).unwrap();
 
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
     }
 
     #[test]

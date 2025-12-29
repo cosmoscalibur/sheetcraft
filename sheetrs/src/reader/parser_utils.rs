@@ -57,6 +57,20 @@ pub fn read_text_node<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<Str
     Ok(text)
 }
 
+/// Extract basename from a file path
+/// Handles both absolute and relative paths, and strips file:// prefix
+pub fn extract_basename(path: &str) -> String {
+    // Strip file:// prefix if present
+    let clean_path = path.trim_start_matches("file://");
+
+    // Extract basename using Path
+    std::path::Path::new(clean_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(clean_path)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,18 +90,4 @@ mod tests {
         assert_eq!(parse_cell_range("C3:D4"), Some((2, 2, 3, 3)));
         assert_eq!(parse_cell_range("A1:Z26"), Some((0, 0, 25, 25)));
     }
-}
-
-/// Extract basename from a file path
-/// Handles both absolute and relative paths, and strips file:// prefix
-pub fn extract_basename(path: &str) -> String {
-    // Strip file:// prefix if present
-    let clean_path = path.trim_start_matches("file://");
-
-    // Extract basename using Path
-    std::path::Path::new(clean_path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or(clean_path)
-        .to_string()
 }

@@ -58,7 +58,6 @@ pub fn has_macros(archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>) 
 }
 
 /// Extract external links from ODS metadata
-
 /// Normalize ODS external workbook references to XLSX index format
 /// Converts ['file:///path/to/file.xlsx'#Sheet1.A1] -> [1]Sheet1!A1
 ///
@@ -572,12 +571,12 @@ fn parse_bracket_ref(
     }
 
     // Parse the bracket content
-    if bracket_content.starts_with('$') {
+    if let Some(stripped) = bracket_content.strip_prefix('$') {
         // [$Sheet.A1] or [$Sheet.A1:.B2]
-        parse_sheet_qualified_ref(&bracket_content[1..], result, preserve_sheet);
-    } else if bracket_content.starts_with('.') {
+        parse_sheet_qualified_ref(stripped, result, preserve_sheet);
+    } else if let Some(stripped) = bracket_content.strip_prefix('.') {
         // [.A1] or [.A1:.B2] or [.A:.A] or [.1:.1]
-        parse_local_ref(&bracket_content[1..], result);
+        parse_local_ref(stripped, result);
     } else {
         // Unknown format, keep as-is
         result.push('[');
@@ -820,7 +819,6 @@ fn convert_visible_rows(
 /// Container for all data parsed from an ODS file
 struct OdsData {
     sheets: Vec<Sheet>,
-    defined_names: HashMap<String, String>,
     hidden_sheets: Vec<String>,
     has_macros: bool,
     external_workbooks: Vec<ExternalWorkbook>,
@@ -855,22 +853,24 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         let mut hidden_sheets = Vec::new();
         let mut hidden_styles = std::collections::HashSet::new();
         let mut sheet_styles = Vec::new(); // (sheet_name, style_name)
-        
+
         if let Ok(content_xml) = self.archive.by_name("content.xml") {
             let mut reader = Reader::from_reader(BufReader::new(content_xml));
             reader.config_mut().trim_text(true);
             let mut buf = Vec::new();
-            
+
             loop {
                 match reader.read_event_into(&mut buf) {
-                    Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"style:style" => {
+                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                        if e.name().as_ref() == b"style:style" =>
+                    {
                         let mut style_name = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"style:name" {
                                 style_name = attr.unescape_value()?.to_string();
                             }
                         }
-                        
+
                         if !style_name.is_empty() {
                             // Look for style:table-properties with table:display="false"
                             let mut inner_buf = Vec::new();
@@ -887,7 +887,9 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                             }
                                         }
                                     }
-                                    Ok(Event::End(ee)) if ee.name().as_ref() == b"style:style" => break,
+                                    Ok(Event::End(ee)) if ee.name().as_ref() == b"style:style" => {
+                                        break;
+                                    }
                                     Ok(Event::Eof) => break,
                                     Err(_) => break,
                                     _ => {}
@@ -896,18 +898,22 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             }
                         }
                     }
-                    Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"table:table" => {
+                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                        if e.name().as_ref() == b"table:table" =>
+                    {
                         let mut sheet_name = String::new();
                         let mut style_name = String::new();
-                        
+
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"table:name" => sheet_name = attr.unescape_value()?.to_string(),
-                                b"table:style-name" => style_name = attr.unescape_value()?.to_string(),
+                                b"table:style-name" => {
+                                    style_name = attr.unescape_value()?.to_string()
+                                }
                                 _ => {}
                             }
                         }
-                        
+
                         if !sheet_name.is_empty() && !style_name.is_empty() {
                             sheet_styles.push((sheet_name, style_name));
                         }
@@ -918,7 +924,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                 }
                 buf.clear();
             }
-            
+
             // Match sheets to hidden styles
             for (name, style) in sheet_styles {
                 if hidden_styles.contains(&style) {
@@ -926,7 +932,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                 }
             }
         }
-        
+
         let mut external_workbooks = Vec::new();
         let has_macros = has_macros(self.archive)?;
 
@@ -986,16 +992,15 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if attr.key.as_ref() == b"xlink:href" {
                             let href = attr.unescape_value()?.to_string();
                             // Extract workbook path and add to external_workbooks
-                            if let Some(path) = href.strip_prefix("../") {
-                                if !external_workbooks
+                            if let Some(path) = href.strip_prefix("../")
+                                && !external_workbooks
                                     .iter()
                                     .any(|wb: &ExternalWorkbook| wb.path == path)
-                                {
-                                    external_workbooks.push(ExternalWorkbook {
-                                        index: external_workbooks.len(),
-                                        path: path.to_string(),
-                                    });
-                                }
+                            {
+                                external_workbooks.push(ExternalWorkbook {
+                                    index: external_workbooks.len(),
+                                    path: path.to_string(),
+                                });
                             }
                             // This sheet is from an external workbook, mark it to be skipped
                             skip_current_sheet = true;
@@ -1548,7 +1553,6 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         // Store all parsed data for future method calls
         self.data = Some(OdsData {
             sheets: sheets.clone(),
-            defined_names: HashMap::new(), // Will be populated by read_defined_names if needed
             hidden_sheets,
             has_macros,
             external_workbooks,
@@ -2159,7 +2163,7 @@ fn test_sheet_collection_ods() {
     let sheets = reader.read_sheets().unwrap();
 
     // Verify sheet count (should not include external sheets)
-    assert!(sheets.len() > 0, "Should have at least one sheet");
+    assert!(!sheets.is_empty(), "Should have at least one sheet");
 
     // Verify no external sheet references in names
     // This implicitly tests that external sheets are filtered out
