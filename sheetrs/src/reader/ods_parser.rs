@@ -935,6 +935,27 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             }
                             // This sheet is from an external workbook, mark it to be skipped
                             skip_current_sheet = true;
+                            // Fast-forward to the end of this table to avoid parsing millions of rows
+                            // CRITICAL: Start depth at 0 since we're already inside table:table element
+                            let mut depth = 0;
+                            let mut skip_buf = Vec::new();
+                            loop {
+                                match reader.read_event_into(&mut skip_buf)? {
+                                    Event::Start(ee) if ee.name().as_ref() == b"table:table" => {
+                                        depth += 1
+                                    }
+                                    Event::End(ee) if ee.name().as_ref() == b"table:table" => {
+                                        if depth == 0 {
+                                            // This is the closing tag of the current external sheet
+                                            break;
+                                        }
+                                        depth -= 1;
+                                    }
+                                    Event::Eof => break,
+                                    _ => {}
+                                }
+                                skip_buf.clear();
+                            }
                             break;
                         }
                     }
@@ -1701,20 +1722,14 @@ mod tests {
             "B2:B4"
         );
         // Single cell ref
-        assert_eq!(
-            normalize_ods_reference("Sheet1.A1", false, None),
-            "A1"
-        );
+        assert_eq!(normalize_ods_reference("Sheet1.A1", false, None), "A1");
         // Multi-sheet range
         assert_eq!(
             normalize_ods_reference("Sheet1.A1:Sheet2.B2", false, None),
             "Sheet1!A1:Sheet2!B2"
         );
         // Absolute local ref
-        assert_eq!(
-            normalize_ods_reference("Sheet1.$A$1", false, None),
-            "$A$1"
-        );
+        assert_eq!(normalize_ods_reference("Sheet1.$A$1", false, None), "$A$1");
     }
     #[test]
     fn test_normalize_ods_unbracketed_range() {
@@ -1789,10 +1804,7 @@ mod tests {
             "A1"
         );
         assert_eq!(normalize_ods_reference("A1:A1", false, None), "A1");
-        assert_eq!(
-            normalize_ods_reference("[.A1:.A1]", false, None),
-            "A1"
-        );
+        assert_eq!(normalize_ods_reference("[.A1:.A1]", false, None), "A1");
     }
 
     #[test]
