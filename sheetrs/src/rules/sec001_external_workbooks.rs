@@ -127,9 +127,10 @@ fn extract_external_workbook_indices(formula: &str) -> Vec<usize> {
     for cap in re.captures_iter(formula) {
         if let Some(num_str) = cap.get(1)
             && let Ok(num) = num_str.as_str().parse::<usize>()
-                && num > 0 {
-                    indices.push(num - 1); // Convert 1-based to 0-based
-                }
+            && num > 0
+        {
+            indices.push(num - 1); // Convert 1-based to 0-based
+        }
     }
     indices
 }
