@@ -17,17 +17,51 @@ use self::xlsx_parser::XlsxReader;
 pub use workbook::{Cell, CellValue, ExternalWorkbook, Sheet, Workbook};
 
 /// Trait for spreadsheet format readers
+///
+/// This trait defines the common interface that different file format parsers (XLSX, ODS)
+/// must implement. It allows the main logic to abstract over specific file formats.
 pub trait WorkbookReader {
+    /// Read all sheets from the workbook
     fn read_sheets(&mut self) -> Result<Vec<Sheet>>;
+
+    /// Read defined names (named ranges) from the workbook
     fn read_defined_names(&mut self) -> Result<HashMap<String, String>>;
+
+    /// Read the list of hidden sheet names
     fn read_hidden_sheets(&mut self) -> Result<Vec<String>>;
+
+    /// Check if the workbook contains macros (VBA, Basic, Scripts)
     fn has_macros(&mut self) -> Result<bool>;
+
+    /// Read external file links (generic links)
     fn read_external_links(&mut self) -> Result<Vec<String>>;
-    /// Read external workbook references with indices
+
+    /// Read external workbook references with their indices
+    ///
+    /// The indices correspond to the reference ID used in formulas (e.g., `[1]Sheet1!A1`).
+    /// For XLSX, this maps to the externalLink relations.
+    /// For ODS, this maps to the order of appearance or explicit file references.
     fn read_external_workbooks(&mut self) -> Result<Vec<ExternalWorkbook>>;
 }
 
 /// Read a workbook from a file path
+///
+/// This function detects the file format based on extension and delegates to the appropriate reader.
+///
+/// # Arguments
+///
+/// * `path` - Path to the spreadsheet file
+///
+/// # Returns
+///
+/// * `Result<Workbook>` - The parsed workbook structure
+///
+/// # Examples
+///
+/// ```no_run
+/// use sheetrs::reader::read_workbook;
+/// let params = read_workbook("tests/minimal_test.xlsx").unwrap();
+/// ```
 pub fn read_workbook<P: AsRef<Path>>(path: P) -> Result<Workbook> {
     let path_ref = path.as_ref();
 

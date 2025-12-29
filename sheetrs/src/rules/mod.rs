@@ -40,6 +40,9 @@ use crate::violation::Violation;
 use anyhow::Result;
 
 /// Trait that all linter rules must implement
+///
+/// This trait defines the standard interface for a linter rule.
+/// Rules must provide identification (ID, name, category) and a check logic.
 pub trait LinterRule: Send + Sync {
     /// Unique rule identifier (e.g., "ERR001")
     fn id(&self) -> &str;
@@ -51,21 +54,36 @@ pub trait LinterRule: Send + Sync {
     fn category(&self) -> RuleCategory;
 
     /// Check the workbook for violations
+    ///
+    /// # Arguments
+    ///
+    /// * `workbook` - The parsed workbook to inspect
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<Violation>>` - A list of violations found, or an error if the check failed
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>>;
 }
 
-/// Rule categories
+/// Rule categories for grouping violations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleCategory {
+    /// Errors that prevent calculation or refer to missing invalid data (e.g., #REF!, #DIV/0!)
     UnresolvedErrors,
+    /// Security risks (e.g., macros, external links, hidden content)
     SecurityAndPrivacy,
+    /// Issues related to usability and formatting (e.g., inconsistent formats)
     FormattingAndUsability,
+    /// Structural issues affecting maintainability (e.g., merged cells, messy names)
     StructuralAndMaintainability,
+    /// Performance issues (e.g., unused ranges, volatile functions)
     Performance,
+    /// Formula-related issues (e.g., long formulas, complexity)
     Formula,
 }
 
 impl RuleCategory {
+    /// Get the human-readable string representation of the category
     pub fn as_str(&self) -> &str {
         match self {
             RuleCategory::UnresolvedErrors => "Unresolved Errors",

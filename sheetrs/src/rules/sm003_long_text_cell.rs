@@ -8,11 +8,16 @@ use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Default)]
+/// Rule that detects cells with excessive text length
+///
+/// extremely long text strings in cells are often data misuse (storing logs/JSON in cells)
+/// or formatted incorrectly.
 pub struct LongTextCellRule {
     config: LinterConfig,
 }
 
 impl LongTextCellRule {
+    /// Create a new instance with optional configuration
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),

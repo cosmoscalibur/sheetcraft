@@ -7,12 +7,20 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects excessively long formulas
+///
+/// Long formulas are hard to read, maintain, and debug.
+///
+/// # Configuration
+///
+/// * `max_formula_length` - Maximum allowed characters (default: 255)
 #[derive(Default)]
 pub struct LongFormulaRule {
     config: LinterConfig,
 }
 
 impl LongFormulaRule {
+    /// Create a new instance with optional configuration
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),

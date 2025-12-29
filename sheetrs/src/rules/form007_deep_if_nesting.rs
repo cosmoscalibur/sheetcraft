@@ -7,6 +7,13 @@ use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects deeply nested IF statements.
+///
+/// Deeply nested IFs are a code smell and hard to maintain. `IFS` or lookup tables are preferred.
+///
+/// # Configuration
+///
+/// * `max_if_nesting` - Maximum allowed nesting level for IF statements (default: 5).
 pub struct DeepIfNestingRule {
     max_if_nesting: usize,
 }

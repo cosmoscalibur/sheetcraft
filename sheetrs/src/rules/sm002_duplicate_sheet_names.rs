@@ -6,6 +6,9 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashMap;
 
+/// Rule that checks for duplicate sheet names (case-insensitive)
+///
+/// Excel/ODS require unique sheet names. Case-insensitive duplicates can cause confusion or errors.
 pub struct DuplicateSheetNamesRule;
 
 /// Normalize sheet name for comparison by converting to lowercase and removing non-alphanumeric characters

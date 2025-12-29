@@ -6,6 +6,10 @@ use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+/// Rule that detects duplicate formulas in non-adjacent cells
+///
+/// Repeated identical formulas in irregular patterns can indicate copy-paste errors
+/// or missed opportunities for dynamic array formulas.
 pub struct DuplicateFormulasRule;
 
 impl LinterRule for DuplicateFormulasRule {

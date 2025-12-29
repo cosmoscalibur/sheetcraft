@@ -6,6 +6,13 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that checks if the workbook has an excessive number of sheets.
+///
+/// Too many sheets can make the workbook difficult to navigate and maintain.
+///
+/// # Configuration
+///
+/// * `max_sheets` - Maximum allowed number of sheets (default: 50).
 pub struct ExcessiveSheetCountsRule {
     threshold: u32,
 }

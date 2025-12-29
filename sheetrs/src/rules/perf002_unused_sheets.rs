@@ -6,6 +6,10 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
+/// Rule that detects unused (standalone) sheets
+///
+/// Detects sheets that are not referenced by any other sheet in the workbook.
+/// This may indicate transient data, scratchpads, or obsolete reports.
 pub struct UnusedSheetsRule;
 
 impl LinterRule for UnusedSheetsRule {

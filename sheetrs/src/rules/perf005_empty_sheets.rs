@@ -6,6 +6,9 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
+/// Rule that detects completely empty sheets
+///
+/// Empty sheets add noise to the workbook navigation and potentially file size overhead.
 pub struct EmptySheetsRule;
 
 impl LinterRule for EmptySheetsRule {

@@ -7,6 +7,10 @@ use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects whole-column (e.g., A:A) or whole-row (e.g., 1:1) references.
+///
+/// Whole references can be computationally expensive as they force calculation over
+/// millions of cells, often unnecessarily.
 pub struct WholeColumnRowRefsRule {
     // Regex patterns for detecting whole column/row references
     column_pattern: Regex,

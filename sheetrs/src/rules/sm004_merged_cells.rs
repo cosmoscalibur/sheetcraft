@@ -5,6 +5,10 @@ use crate::reader::Workbook;
 use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects merged cells
+///
+/// Merged cells cause issues with sorting, filtering, and copy-pasting.
+/// Center Across Selection is a preferred alternative.
 pub struct MergedCellsRule;
 
 impl LinterRule for MergedCellsRule {

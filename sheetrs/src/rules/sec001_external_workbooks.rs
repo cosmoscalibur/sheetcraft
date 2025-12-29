@@ -6,10 +6,13 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Scope for reporting external link violations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkScope {
-    Book,  // Only report book-level violations
-    Sheet, // Only report sheet-level violations
+    /// Only report violations at the workbook level (metadata)
+    Book,
+    /// Report violations for individual cells/ranges referencing external workbooks
+    Sheet,
 }
 
 impl LinkScope {
@@ -22,11 +25,20 @@ impl LinkScope {
     }
 }
 
+/// Rule that detects references to external workbooks
+///
+/// Can be configured to report just the presence of external links (Book scope)
+/// or pinpoint the specific ranges using them (Sheet scope).
+///
+/// # Configuration
+///
+/// * `external_workbook_scope` - "BOOK" (default) or "SHEET"
 pub struct ExternalWorkbooksRule {
     scope: LinkScope,
 }
 
 impl ExternalWorkbooksRule {
+    /// Create a new instance configured from the linter config
     pub fn new(config: &LinterConfig) -> Self {
         let scope = config
             .get_param_str("external_workbook_scope", None)

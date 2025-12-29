@@ -11,6 +11,8 @@ pub const DEFAULT_ACTIVE_RULES: &[&str] = &[
 ];
 
 /// Get all valid configuration tokens (Rule IDs, Category Prefixes, "ALL")
+///
+/// Used for validating configuration files.
 pub fn get_all_valid_tokens() -> HashSet<String> {
     let mut tokens = HashSet::new();
     tokens.insert("ALL".to_string());
@@ -32,6 +34,17 @@ pub fn get_all_valid_tokens() -> HashSet<String> {
 }
 
 /// Create all enabled rules based on configuration
+///
+/// Filters the complete list of rules based on the `enabled_rules` and `disabled_rules`
+/// in the configuration.
+///
+/// # Arguments
+///
+/// * `config` - The linter configuration
+///
+/// # Returns
+///
+/// * `Vec<Box<dyn LinterRule>>` - List of instantiated and configured active rules
 pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     let all_rules = create_all_rules(config);
 
@@ -53,6 +66,8 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 }
 
 /// Create instances of all available rules
+///
+/// Instantiates every available rule, passing configuration where necessary.
 fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     vec![
         Box::new(err001_error_cells::ErrorCellsRule),

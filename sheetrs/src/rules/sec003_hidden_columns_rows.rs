@@ -5,6 +5,9 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects hidden columns and rows
+///
+/// Large numbers of hidden rows/columns can obscure data and make the spreadsheet harder to audit.
 pub struct HiddenColumnsRowsRule;
 
 impl LinterRule for HiddenColumnsRowsRule {

@@ -7,6 +7,13 @@ use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects excessively nested formulas.
+///
+/// Deeply nested formulas are hard to read, understand, and debug.
+///
+/// # Configuration
+///
+/// * `max_formula_nesting` - Maximum allowed nesting level (default: 5).
 pub struct DeepFormulaNestingRule {
     max_nesting: usize,
 }

@@ -7,11 +7,15 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Default)]
+/// Rule that detects non-descriptive sheet names (e.g. Sheet1, Sheet2)
+///
+/// Generic names make it hard to understand the purpose of a worksheet.
 pub struct NonDescriptiveSheetNameRule {
     config: LinterConfig,
 }
 
 impl NonDescriptiveSheetNameRule {
+    /// Create a new instance with optional configuration
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),

@@ -15,9 +15,13 @@ pub struct ExternalWorkbook {
 }
 
 #[derive(Debug, Clone, Default)]
+/// The main structure representing a parsed spreadsheet workbook
 pub struct Workbook {
+    /// Absolute path to the workbook file
     pub path: PathBuf,
+    /// Collection of worksheets in the workbook
     pub sheets: Vec<Sheet>,
+    /// Map of defined names (named ranges) to their values/formulas
     pub defined_names: HashMap<String, String>,
     /// List of hidden sheet names
     pub hidden_sheets: Vec<String>,
@@ -41,17 +45,20 @@ impl Workbook {
     }
 }
 
-/// Represents a worksheet
+/// Represents a single worksheet within a workbook
 #[derive(Debug, Clone, Default)]
 pub struct Sheet {
+    /// Name of the sheet
     pub name: String,
+    /// Map of cell coordinates (row, col) to Cell data. 0-based indexing.
     pub cells: HashMap<(u32, u32), Cell>,
+    /// The used range of the sheet: (max_row, max_col) inclusive. 0-based.
     pub used_range: Option<(u32, u32)>, // (rows, cols)
     /// List of hidden column indices (0-based)
     pub hidden_columns: Vec<u32>,
     /// List of hidden row indices (0-based)
     pub hidden_rows: Vec<u32>,
-    /// Merged cell ranges: (start_row, start_col, end_row, end_col)
+    /// Merged cell ranges: (start_row, start_col, end_row, end_col), 0-based, inclusive
     pub merged_cells: Vec<(u32, u32, u32, u32)>,
     /// Error message if there was an error parsing formulas for this sheet
     pub formula_parsing_error: Option<String>,
@@ -61,10 +68,12 @@ pub struct Sheet {
     pub conditional_formatting_count: usize,
     /// Ranges where conditional formatting rules are applied
     pub conditional_formatting_ranges: Vec<String>,
+    /// Whether the sheet is visible (not hidden)
     pub visible: bool,
 }
 
 impl Sheet {
+    /// Create a new empty sheet with the given name
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -124,22 +133,33 @@ impl Sheet {
 /// Represents a single cell
 #[derive(Debug, Clone, Default)]
 pub struct Cell {
+    /// 0-based row index
     pub row: u32,
+    /// 0-based column index
     pub col: u32,
+    /// The value or formula contained in the cell
     pub value: CellValue,
+    /// The number format string applied to the cell (e.g., "0.00", "mm/dd/yyyy")
     pub num_fmt: Option<String>,
 }
 
 /// Cell value types
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum CellValue {
+    /// Empty cell
     #[default]
     Empty,
+    /// Numeric value (float)
     Number(f64),
+    /// Text/String value
     Text(String),
+    /// Boolean value
     Boolean(bool),
+    /// Formula with optional cached result/error
     Formula {
+        /// The formula string (without leading =)
         formula: String,
+        /// Cached error message (e.g. #REF!, #DIV/0!) if present
         cached_error: Option<String>,
     },
 }

@@ -7,6 +7,10 @@ use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects inefficient empty string tests in formulas.
+///
+/// Checks like `=""` or `LEN()=0` are less readable and potentially less efficient
+/// than `ISBLANK()`.
 pub struct EmptyStringTestRule {
     // Regex patterns for detecting empty string tests
     patterns: Vec<(Regex, &'static str)>,
