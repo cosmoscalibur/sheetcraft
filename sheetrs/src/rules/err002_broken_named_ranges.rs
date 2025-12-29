@@ -5,6 +5,9 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that identifies broken named ranges (references to invalid/deleted locations)
+///
+/// Checks all defined names (named ranges) for reference strings containing "#REF!".
 pub struct BrokenNamedRangesRule;
 
 impl LinterRule for BrokenNamedRangesRule {

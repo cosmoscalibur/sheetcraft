@@ -259,6 +259,9 @@ pub fn extract_tables_from_xlsx(
     Ok(current_tables)
 }
 
+/// XLSX (Office Open XML) reader implementation
+///
+/// Handles parsing of .xlsx workbook.xml, worksheets/*.xml and other parts
 pub struct XlsxReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
     shared_strings: Vec<String>,

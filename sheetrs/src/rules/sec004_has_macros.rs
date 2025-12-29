@@ -5,6 +5,9 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects the presence of macros (VBA/Scripts)
+///
+/// Macros can pose security risks or indicate legacy automation that may need review.
 pub struct HasMacrosRule;
 
 impl LinterRule for HasMacrosRule {

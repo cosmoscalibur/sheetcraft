@@ -6,6 +6,9 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects numbers stored as text
+///
+/// Numbers stored as text can cause calculation errors and sorting issues.
 pub struct NumericTextRule;
 
 impl LinterRule for NumericTextRule {

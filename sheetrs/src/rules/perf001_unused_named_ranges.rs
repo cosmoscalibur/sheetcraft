@@ -6,6 +6,10 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
+/// Rule that detects unused named ranges
+///
+/// Named ranges that are defined but never used in any formula clutter the workbook manager
+/// and can confuse users.
 pub struct UnusedNamedRangesRule;
 
 impl LinterRule for UnusedNamedRangesRule {

@@ -5,6 +5,11 @@ use crate::reader::Workbook;
 use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that identifies cells containing error values
+///
+/// Detects cells with:
+/// - Explicit error types (e.g., from cell metadata)
+/// - Formula strings containing error literals (e.g., "#DIV/0!", "#REF!")
 pub struct ErrorCellsRule;
 
 impl LinterRule for ErrorCellsRule {

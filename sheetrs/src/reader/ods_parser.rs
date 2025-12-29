@@ -14,6 +14,10 @@ use zip::ZipArchive;
 /// Check if ODS file contains macros
 /// ODS macros are stored in Basic/ or Scripts/ directories,
 /// or declared in META-INF/manifest.xml
+///
+/// # Returns
+///
+/// * `Result<bool>` - True if macros or scripts are detected
 pub fn has_macros(archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>) -> Result<bool> {
     // 1. Check for directory presence
     for i in 0..archive.len() {
@@ -164,6 +168,12 @@ fn parse_ods_date(date_str: &str) -> Option<f64> {
 
 /// Extract formulas from an ODS worksheet
 /// ODS formulas are stored in table:formula attribute
+///
+/// Normalize ODS reference to something resembling Excel A1 notation
+/// Handles:
+/// - `[.A1]` -> `A1` (Local ref)
+/// - `[$Sheet1.A1]` -> `Sheet1!A1` (Absolute sheet ref)
+/// - `['file:///path'#$Sheet1.A1]` -> `[1]Sheet1!A1` (External ref)
 pub fn normalize_ods_reference(
     reference: &str,
     preserve_sheet: bool,
@@ -554,6 +564,9 @@ struct OdsData {
     external_workbooks: Vec<ExternalWorkbook>,
 }
 
+/// ODS (OpenDocument Spreadsheet) reader implementation
+///
+/// Handles parsing of .ods content.xml and styles.xml
 pub struct OdsReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
     data: Option<OdsData>,

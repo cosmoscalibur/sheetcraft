@@ -7,11 +7,20 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Default)]
+/// Rule that detects excessive conditional formatting rules
+///
+/// Too many conditional formatting rules can severely degrade rendering performance
+/// and file open times.
+///
+/// # Configuration
+///
+/// * `max_conditional_formats` - Maximum allowed rules per sheet (default: 50)
 pub struct ExcessiveConditionalFormattingRule {
     config: LinterConfig,
 }
 
 impl ExcessiveConditionalFormattingRule {
+    /// Create a new instance with optional configuration
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),

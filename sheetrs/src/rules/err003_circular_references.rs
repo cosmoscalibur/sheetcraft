@@ -1,4 +1,6 @@
-//! FORM005: Circular reference detection
+//! ERR003: Circular reference detection
+//!
+//! Detects circular dependencies between cells.
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
@@ -7,6 +9,15 @@ use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
+/// Rule that detects circular references in formulas.
+///
+/// Circular references occur when a formula refers back to its own cell, either directly or indirectly.
+/// This can cause calculation errors and infinite loops.
+///
+/// # Configuration
+///
+/// * `expand_ranges_in_dependencies` - If true, expands range references (e.g. A1:B2) into individual cell dependencies.
+///   Default is false (optimization).
 pub struct CircularReferenceRule {
     cell_ref_pattern: Regex,
     config: crate::config::LinterConfig,

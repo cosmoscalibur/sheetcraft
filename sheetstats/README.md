@@ -16,7 +16,7 @@ sheetstats <FILE> [OPTIONS]
 
 ### Options
 
-- `--format <FORMAT>`: Output format (text/json).
+- `--format <FORMAT>`: Output format (human/json).
 
 ## Metrics Reported
 

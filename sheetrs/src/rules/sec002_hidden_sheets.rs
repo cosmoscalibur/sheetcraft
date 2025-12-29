@@ -5,6 +5,9 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects hidden sheets
+///
+/// Hidden sheets can sometimes contain sensitive data or deprecated logic that should be removed.
 pub struct HiddenSheetsRule;
 
 impl LinterRule for HiddenSheetsRule {

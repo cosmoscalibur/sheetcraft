@@ -7,11 +7,16 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Default)]
+/// Rule that detects excessively large used ranges
+///
+/// A used range much larger than the actual data often indicates "ghost" data or formatting
+/// applied to empty cells, significantly bloating file size.
 pub struct LargeUsedRangeRule {
     config: LinterConfig,
 }
 
 impl LargeUsedRangeRule {
+    /// Create a new instance with optional configuration
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),

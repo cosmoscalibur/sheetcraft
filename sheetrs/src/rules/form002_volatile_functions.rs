@@ -7,6 +7,15 @@ use crate::violation::{CellReference, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
+/// Rule that detects usage of volatile functions.
+///
+/// Volatile functions (like NOW, TODAY, RAND) recalculate every time the sheet recalculates,
+/// potentially causing performance issues in large workbooks.
+///
+/// # Configuration
+///
+/// * `volatile_functions` - Array of function names to treat as volatile.
+///   Defaults: NOW, TODAY, RAND, RANDBETWEEN, OFFSET, INDIRECT, INFO, CELL.
 pub struct VolatileFunctionsRule {
     volatile_functions: Vec<String>,
 }

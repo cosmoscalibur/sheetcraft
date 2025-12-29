@@ -5,6 +5,14 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 
 /// Parse a cell reference like "A1" into (row, col) as 0-based indices
+///
+/// # Arguments
+///
+/// * `cell_ref` - The cell reference string (e.g., "A1", "Z99")
+///
+/// # Returns
+///
+/// * `Option<(u32, u32)>` - The (row, col) indices if parsing is successful.
 pub fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
     let mut col = 0u32;
     let mut row_str = String::new();
@@ -28,6 +36,14 @@ pub fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
 }
 
 /// Parse a cell range like "A1:B2" into (start_row, start_col, end_row, end_col)
+///
+/// # Arguments
+///
+/// * `range` - The range string (e.g., "A1:B2")
+///
+/// # Returns
+///
+/// * `Option<(u32, u32, u32, u32)>` - The range coordinates if parsing is successful.
 pub fn parse_cell_range(range: &str) -> Option<(u32, u32, u32, u32)> {
     let parts: Vec<&str> = range.split(':').collect();
     if parts.len() != 2 {

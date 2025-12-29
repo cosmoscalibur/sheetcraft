@@ -38,6 +38,16 @@ impl LinkStatus {
     }
 }
 
+/// Rule that checks for external web URLs in cell values.
+///
+/// External links can be a security risk or simply undesirable in certain contexts.
+/// This rule can be configured to report all URLs or only broken ones (if link validation is enabled).
+///
+/// # Configuration
+///
+/// * `url_links_scope` - Scope of check: "BOOK" (default, unique URLs per workbook) or "SHEET" (per sheet ranges).
+/// * `url_links_status` - Status to check: "ALL" (default, all URLs) or "INVALID" (only broken URLs).
+/// * `url_timeout_seconds` - Timeout for link validation in seconds (default: 5).
 pub struct WebUrlsRule {
     scope: LinkScope,
     status: LinkStatus,
