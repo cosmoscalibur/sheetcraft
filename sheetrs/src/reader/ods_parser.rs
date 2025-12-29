@@ -1,5 +1,7 @@
-//! ODS parsing utilities for extracting metadata from ODS files
+//! ODS (OpenDocument Spreadsheet) parser implementation
 
+use super::WorkbookReader;
+use super::workbook::{Cell, CellValue, ExternalWorkbook, Sheet};
 use anyhow::Result;
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -7,521 +9,8 @@ use std::collections::HashMap;
 use std::io::BufReader;
 use zip::ZipArchive;
 
-use super::{Cell, CellValue, Sheet, WorkbookReader};
-
-pub fn extract_hidden_sheets_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
-    let mut hidden_sheets = Vec::new();
-    let mut sheet_styles = Vec::new(); // (sheet_name, style_name)
-    let mut hidden_styles = std::collections::HashSet::new();
-
-    {
-        let content_xml = match archive.by_name("content.xml") {
-            Ok(file) => file,
-            Err(_) => return Ok(hidden_sheets),
-        };
-
-        let buf_reader = BufReader::new(content_xml);
-        let mut reader = Reader::from_reader(buf_reader);
-        reader.config_mut().trim_text(true);
-
-        let mut buf = Vec::new();
-        loop {
-            match reader.read_event_into(&mut buf)? {
-                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"style:style" => {
-                    let mut style_name = String::new();
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"style:name" {
-                            style_name = attr.unescape_value()?.to_string();
-                        }
-                    }
-
-                    if !style_name.is_empty() {
-                        // If it was a Start event, now look for style:table-properties
-                        let mut inner_buf = Vec::new();
-                        loop {
-                            match reader.read_event_into(&mut inner_buf)? {
-                                Event::Start(ee) | Event::Empty(ee)
-                                    if ee.name().as_ref() == b"style:table-properties" =>
-                                {
-                                    for attr in ee.attributes().flatten() {
-                                        if attr.key.as_ref() == b"table:display"
-                                            && attr.value.as_ref() == b"false"
-                                        {
-                                            hidden_styles.insert(style_name.clone());
-                                        }
-                                    }
-                                }
-                                Event::End(ee) if ee.name().as_ref() == b"style:style" => break,
-                                Event::Eof => break,
-                                _ => {}
-                            }
-                            inner_buf.clear();
-                        }
-                    }
-                }
-                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"table:table" => {
-                    let mut sheet_name = String::new();
-                    let mut style_name = String::new();
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:name" {
-                            sheet_name = attr.unescape_value()?.to_string();
-                        } else if attr.key.as_ref() == b"table:style-name" {
-                            style_name = attr.unescape_value()?.to_string();
-                        }
-                    }
-                    if !sheet_name.is_empty() && !style_name.is_empty() {
-                        sheet_styles.push((sheet_name, style_name));
-                    }
-                }
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
-        }
-    }
-
-    for (name, style) in sheet_styles {
-        if hidden_styles.contains(&style) {
-            hidden_sheets.push(name);
-        }
-    }
-
-    // Fallback: use settings.xml if no hidden sheets found or to supplement
-    if hidden_sheets.is_empty() {
-        let all_sheets = extract_all_sheet_names_from_ods(archive)?;
-        let visible_sheets = extract_visible_sheets_from_settings(archive)?;
-        for sheet in all_sheets {
-            if !visible_sheets.contains(&sheet) && !hidden_sheets.contains(&sheet) {
-                hidden_sheets.push(sheet);
-            }
-        }
-    }
-
-    Ok(hidden_sheets)
-}
-
-fn extract_all_sheet_names_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
-    let mut sheet_names = Vec::new();
-
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(sheet_names),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"table:table" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:name" {
-                            let name = attr.unescape_value()?.to_string();
-                            if !name.is_empty() {
-                                sheet_names.push(name);
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(sheet_names)
-}
-
-/// Extract visible sheet names from settings.xml Tables section
-fn extract_visible_sheets_from_settings(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<std::collections::HashSet<String>> {
-    let mut visible_sheets = std::collections::HashSet::new();
-
-    let settings_xml = match archive.by_name("settings.xml") {
-        Ok(file) => file,
-        Err(_) => {
-            // No settings.xml - assume all sheets are visible (fail-safe)
-            return Ok(visible_sheets);
-        }
-    };
-
-    let buf_reader = BufReader::new(settings_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut in_tables_section = false;
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                // Check if we're entering the Tables section
-                if e.name().as_ref() == b"config:config-item-map-named" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"config:name" && attr.value.as_ref() == b"Tables" {
-                            in_tables_section = true;
-                        }
-                    }
-                }
-
-                // If we're in Tables section, extract sheet names from map entries
-                if in_tables_section && e.name().as_ref() == b"config:config-item-map-entry" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"config:name" {
-                            let name = attr.unescape_value()?.to_string();
-                            if !name.is_empty() {
-                                visible_sheets.insert(name);
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(Event::End(e)) => {
-                // Exit Tables section
-                if e.name().as_ref() == b"config:config-item-map-named" {
-                    in_tables_section = false;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(visible_sheets)
-}
-
-/// Extract hidden columns and rows from an ODS worksheet
-/// ODS format:
-/// - Hidden columns: <table:table-column table:visibility="collapse" or "filter">
-/// - Hidden rows: <table:table-row table:visibility="collapse" or "filter">
-pub fn extract_hidden_columns_rows_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-    sheet_name: &str,
-) -> Result<(Vec<u32>, Vec<u32>)> {
-    let mut hidden_columns = Vec::new();
-    let mut hidden_rows = Vec::new();
-
-    // ODS stores all sheets in content.xml
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok((hidden_columns, hidden_rows)),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut in_target_sheet = false;
-    let mut current_col = 0u32;
-    let mut current_row = 0u32;
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                match e.name().as_ref() {
-                    b"table:table" => {
-                        let mut name = String::new();
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"table:name" {
-                                name = attr.unescape_value()?.to_string();
-                            }
-                        }
-
-                        if name == sheet_name {
-                            in_target_sheet = true;
-                            current_col = 0;
-                            current_row = 0;
-                        } else if in_target_sheet {
-                            // We were in the target sheet, but now we encountered another table tag.
-                            // In ODS, tables are top-level and don't nest.
-                            break;
-                        }
-                    }
-                    b"table:table-column" if in_target_sheet => {
-                        let mut visibility = String::from("visible");
-                        let mut repeated = 1u32;
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:visibility" => {
-                                    visibility = attr.unescape_value()?.to_string();
-                                }
-                                b"table:number-columns-repeated" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        repeated = val;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        // If visibility is "collapse" or "filter", the column is hidden
-                        if visibility == "collapse" || visibility == "filter" {
-                            for _ in 0..repeated {
-                                hidden_columns.push(current_col);
-                                current_col += 1;
-                            }
-                        } else {
-                            current_col += repeated;
-                        }
-                    }
-                    b"table:table-row" if in_target_sheet => {
-                        let mut visibility = String::from("visible");
-                        let mut repeated = 1u32;
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:visibility" => {
-                                    visibility = attr.unescape_value()?.to_string();
-                                }
-                                b"table:number-rows-repeated" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        repeated = val;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        // If visibility is "collapse" or "filter", the row is hidden
-                        if visibility == "collapse" || visibility == "filter" {
-                            for _ in 0..repeated {
-                                hidden_rows.push(current_row);
-                                current_row += 1;
-                            }
-                        } else {
-                            current_row += repeated;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"table:table" && in_target_sheet {
-                    break; // Found our sheet, done
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok((hidden_columns, hidden_rows))
-}
-
 /// Extract merged cell ranges from an ODS worksheet
 /// ODS format: <table:table-cell table:number-columns-spanned="X" table:number-rows-spanned="Y">
-pub fn extract_merged_cells_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-    sheet_name: &str,
-) -> Result<Vec<(u32, u32, u32, u32)>> {
-    let mut merged_cells = Vec::new();
-
-    // ODS stores all sheets in content.xml
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(merged_cells),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut in_target_sheet = false;
-    let mut current_row = 0u32;
-    let mut current_col = 0u32;
-    let mut current_row_repeated = 1u32;
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                match e.name().as_ref() {
-                    b"table:table" => {
-                        let mut name = String::new();
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"table:name" {
-                                name = attr.unescape_value()?.to_string();
-                            }
-                        }
-
-                        if name == sheet_name {
-                            in_target_sheet = true;
-                            current_row = 0;
-                            current_col = 0;
-                        } else if in_target_sheet {
-                            break;
-                        }
-                    }
-                    b"table:table-row" if in_target_sheet => {
-                        current_col = 0; // Reset column for new row
-                        // Tracking row repetition for spanning logic
-                        current_row_repeated = 1;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"table:number-rows-repeated"
-                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                            {
-                                current_row_repeated = val;
-                            }
-                        }
-                    }
-                    b"table:table-cell" if in_target_sheet => {
-                        let mut cols_spanned = 1u32;
-                        let mut rows_spanned = 1u32;
-                        let mut repeated = 1u32;
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:number-columns-spanned" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        cols_spanned = val;
-                                    }
-                                }
-                                b"table:number-rows-spanned" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        rows_spanned = val;
-                                    }
-                                }
-                                b"table:number-columns-repeated" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        repeated = val;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        // If either span is > 1, this is a merged cell
-                        if cols_spanned > 1 || rows_spanned > 1 {
-                            merged_cells.push((
-                                current_row,
-                                current_col,
-                                current_row + rows_spanned - 1,
-                                current_col + cols_spanned - 1,
-                            ));
-                        }
-
-                        current_col += repeated;
-                    }
-                    b"table:covered-table-cell" if in_target_sheet => {
-                        // Covered cells are part of a merged range and should increment the column counter
-                        let mut repeated = 1u32;
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr
-                                && attr.key.as_ref() == b"table:number-columns-repeated"
-                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                            {
-                                repeated = val;
-                            }
-                        }
-                        current_col += repeated;
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                match e.name().as_ref() {
-                    b"table:table-row" if in_target_sheet => {
-                        // Empty row - increment row counter
-                        let mut repeated = 1u32;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"table:number-rows-repeated"
-                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                            {
-                                repeated = val;
-                            }
-                        }
-                        current_row += repeated;
-                    }
-                    b"table:table-cell" if in_target_sheet => {
-                        let mut cols_spanned = 1u32;
-                        let mut rows_spanned = 1u32;
-                        let mut repeated = 1u32;
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:number-columns-spanned" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        cols_spanned = val;
-                                    }
-                                }
-                                b"table:number-rows-spanned" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        rows_spanned = val;
-                                    }
-                                }
-                                b"table:number-columns-repeated" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        repeated = val;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        // If either span is > 1, this is a merged cell
-                        if cols_spanned > 1 || rows_spanned > 1 {
-                            merged_cells.push((
-                                current_row,
-                                current_col,
-                                current_row + rows_spanned - 1,
-                                current_col + cols_spanned - 1,
-                            ));
-                        }
-
-                        current_col += repeated;
-                    }
-                    b"table:covered-table-cell" if in_target_sheet => {
-                        // Covered cells are part of a merged range and should increment the column counter
-                        let mut repeated = 1u32;
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr
-                                && attr.key.as_ref() == b"table:number-columns-repeated"
-                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                            {
-                                repeated = val;
-                            }
-                        }
-                        current_col += repeated;
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(e)) if in_target_sheet => match e.name().as_ref() {
-                b"table:table-row" => {
-                    current_row += current_row_repeated;
-                }
-                b"table:table" => {
-                    break;
-                }
-                _ => {}
-            },
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(merged_cells)
-}
-
 /// Check if ODS file contains macros
 /// ODS macros are stored in Basic/ or Scripts/ directories,
 /// or declared in META-INF/manifest.xml
@@ -569,135 +58,6 @@ pub fn has_macros(archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>) 
 }
 
 /// Extract external links from ODS metadata
-pub fn extract_external_links_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
-    let mut links = std::collections::HashSet::new();
-
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(Vec::new()),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf)? {
-            Event::Start(ref e) if e.name().as_ref() == b"text:a" => {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xlink:href" {
-                        let link = attr.unescape_value()?.to_string();
-                        if !link.starts_with("#") {
-                            links.insert(link);
-                        }
-                    }
-                }
-            }
-            Event::Start(ref e) | Event::Empty(ref e)
-                if e.name().as_ref() == b"table:table-source" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xlink:href" {
-                        links.insert(attr.unescape_value()?.to_string());
-                    }
-                }
-            }
-            Event::Start(ref e) | Event::Empty(ref e)
-                if e.name().as_ref() == b"table:table-cell" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"table:formula" {
-                        let formula = attr.unescape_value()?;
-                        if formula.contains("'file:///")
-                            && let Some(start) = formula.find("'file:///")
-                        {
-                            let remainder = &formula[start + 1..];
-                            if let Some(end) = remainder.find("'#") {
-                                let path = &remainder[..end];
-                                links.insert(path.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    // Strip file:// prefix from paths for cleaner display
-    let cleaned_links: Vec<String> = links
-        .into_iter()
-        .map(|link| {
-            if link.starts_with("file://") {
-                link.trim_start_matches("file://").to_string()
-            } else {
-                link
-            }
-        })
-        .collect();
-
-    Ok(cleaned_links)
-}
-
-/// Extract external workbooks with indices from ODS file
-/// Returns a vector of ExternalWorkbook where index is 0-based (order of appearance)
-/// Only extracts from metadata (table:table-source), not from formulas
-pub fn extract_external_workbooks_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<super::ExternalWorkbook>> {
-    use super::ExternalWorkbook;
-    use std::collections::HashMap;
-
-    let mut workbooks = Vec::new();
-    let mut path_to_index: HashMap<String, usize> = HashMap::new();
-    let mut next_index = 0;
-
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(workbooks),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf)? {
-            // Check table:table-source elements for external workbook references
-            Event::Start(ref e) | Event::Empty(ref e)
-                if e.name().as_ref() == b"table:table-source" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xlink:href" {
-                        let path = attr.unescape_value()?.to_string();
-                        let basename = super::parser_utils::extract_basename(&path);
-
-                        // Only add if we haven't seen this basename before
-                        if !path_to_index.contains_key(&basename) {
-                            path_to_index.insert(basename.clone(), next_index);
-                            workbooks.push(ExternalWorkbook {
-                                index: next_index,
-                                path: basename,
-                            });
-                            next_index += 1;
-                        }
-                    }
-                }
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(workbooks)
-}
 
 /// Normalize ODS external workbook references to XLSX index format
 /// Converts ['file:///path/to/file.xlsx'#Sheet1.A1] -> [1]Sheet1!A1
@@ -750,181 +110,6 @@ pub fn normalize_ods_external_refs(
 
 /// Extract cached error values from an ODS worksheet
 /// ODS error values are often stored in calcext:value-type="error" and calcext:value="#ERROR!"
-pub fn extract_cached_errors_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-    sheet_name: &str,
-) -> Result<std::collections::HashMap<(u32, u32), String>> {
-    use std::collections::HashMap;
-    let mut errors = HashMap::new();
-
-    // ODS stores all sheets in content.xml
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(errors),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut in_target_sheet = false;
-    let mut current_row = 0u32;
-    let mut current_col = 0u32;
-    let mut current_row_repeated = 1u32;
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"table:table" => {
-                    let mut name = String::new();
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:name" {
-                            name = attr.unescape_value()?.to_string();
-                        }
-                    }
-
-                    if name == sheet_name {
-                        in_target_sheet = true;
-                        current_row = 0;
-                        current_col = 0;
-                    } else if in_target_sheet {
-                        break;
-                    }
-                }
-                b"table:table-row" if in_target_sheet => {
-                    current_col = 0;
-                    current_row_repeated = 1;
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr
-                            && attr.key.as_ref() == b"table:number-rows-repeated"
-                            && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                        {
-                            current_row_repeated = val;
-                        }
-                    }
-                }
-                b"table:table-cell" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    let mut is_error = false;
-                    let mut error_msg = String::new();
-
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"calcext:value-type" => {
-                                if attr.value.as_ref() == b"error" {
-                                    is_error = true;
-                                }
-                            }
-                            b"calcext:value" | b"office:string-value" => {
-                                if error_msg.is_empty() {
-                                    error_msg = attr.unescape_value()?.to_string();
-                                }
-                            }
-                            b"table:number-columns-repeated" => {
-                                if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                    repeated = val;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if is_error && error_msg.is_empty() {
-                        error_msg = "#ERROR!".to_string();
-                    }
-
-                    if is_error && !error_msg.is_empty() {
-                        for i in 0..repeated {
-                            for r in 0..current_row_repeated {
-                                errors
-                                    .insert((current_row + r, current_col + i), error_msg.clone());
-                            }
-                        }
-                    }
-                    current_col += repeated;
-                }
-                _ => {}
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"table:table-row" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr
-                            && attr.key.as_ref() == b"table:number-rows-repeated"
-                            && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                        {
-                            repeated = val;
-                        }
-                    }
-                    current_row += repeated;
-                }
-                b"table:table-cell" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    let mut is_error = false;
-                    let mut error_msg = String::new();
-
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"calcext:value-type" => {
-                                if attr.value.as_ref() == b"error" {
-                                    is_error = true;
-                                }
-                            }
-                            b"calcext:value" | b"office:string-value" => {
-                                if error_msg.is_empty() {
-                                    error_msg = attr.unescape_value()?.to_string();
-                                }
-                            }
-                            b"table:number-columns-repeated" => {
-                                if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                    repeated = val;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if is_error && error_msg.is_empty() {
-                        error_msg = "#ERROR!".to_string();
-                    }
-
-                    if is_error && !error_msg.is_empty() {
-                        for i in 0..repeated {
-                            for r in 0..current_row_repeated {
-                                errors
-                                    .insert((current_row + r, current_col + i), error_msg.clone());
-                            }
-                        }
-                    }
-                    current_col += repeated;
-                }
-                _ => {}
-            },
-            Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"table:table-row" if in_target_sheet => {
-                        current_row += current_row_repeated;
-                    }
-                    b"table:table" if in_target_sheet => {
-                        break; // Found our sheet, done
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(errors)
-}
-
-/// Extract date styles from ODS content.xml and styles.xml
-/// Returns a map of style_name -> excel_format_string
-// Helper to extract date styles and cell style mappings
 fn parse_ods_date(date_str: &str) -> Option<f64> {
     // Format: YYYY-MM-DD or YYYY-MM-DDThh:mm:ss
     let parts: Vec<&str> = date_str.split('T').collect();
@@ -1291,344 +476,459 @@ pub fn extract_date_styles_from_ods(
 
 /// Extract formulas from an ODS worksheet
 /// ODS formulas are stored in table:formula attribute
-pub fn extract_formulas_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-    sheet_name: &str,
-) -> Result<std::collections::HashMap<(u32, u32), String>> {
-    use std::collections::HashMap;
-    let mut formulas = HashMap::new();
-
-    // ODS stores all sheets in content.xml
-    let content_xml = match archive.by_name("content.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(formulas),
-    };
-
-    let buf_reader = BufReader::new(content_xml);
-    let mut reader = Reader::from_reader(buf_reader);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut in_target_sheet = false;
-    let mut current_row = 0u32;
-    let mut current_col = 0u32;
-    let mut current_row_repeated = 1u32;
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"table:table" => {
-                    let mut name = String::new();
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:name" {
-                            name = attr.unescape_value()?.to_string();
-                        }
-                    }
-
-                    if name == sheet_name {
-                        in_target_sheet = true;
-                        current_row = 0;
-                        current_col = 0;
-                    } else if in_target_sheet {
-                        break;
-                    }
-                }
-                b"table:table-row" if in_target_sheet => {
-                    current_col = 0;
-                    current_row_repeated = 1;
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr
-                            && attr.key.as_ref() == b"table:number-rows-repeated"
-                            && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                        {
-                            current_row_repeated = val;
-                        }
-                    }
-                }
-                b"table:table-cell" | b"table:covered-table-cell" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    let mut formula = String::new();
-
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"table:formula" => {
-                                formula = attr.unescape_value()?.to_string();
-                            }
-                            b"table:number-columns-repeated" => {
-                                if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                    repeated = val;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Only extract formulas from non-repeated cells.
-                    // Repeated cells should be handled by calamine, which correctly adjusts
-                    // cell references. Copying the same formula to repeated cells without
-                    // adjustment causes false circular references (e.g., G721's formula
-                    // copied to G731 without adjusting references).
-                    if !formula.is_empty() && repeated == 1 && current_row_repeated == 1 {
-                        // ODS formulas usually start with "of:=". We keep it raw here and normalize later.
-                        formulas.insert((current_row, current_col), formula);
-                    }
-                    current_col += repeated;
-                }
-                _ => {}
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"table:table-row" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr
-                            && attr.key.as_ref() == b"table:number-rows-repeated"
-                            && let Ok(val) = attr.unescape_value()?.parse::<u32>()
-                        {
-                            repeated = val;
-                        }
-                    }
-                    current_row += repeated;
-                }
-                b"table:table-cell" | b"table:covered-table-cell" if in_target_sheet => {
-                    let mut repeated = 1u32;
-                    let mut formula = String::new();
-
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"table:formula" => {
-                                formula = attr.unescape_value()?.to_string();
-                            }
-                            b"table:number-columns-repeated" => {
-                                if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                    repeated = val;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Only extract formulas from non-repeated cells (see comment above)
-                    if !formula.is_empty() && repeated == 1 && current_row_repeated == 1 {
-                        formulas.insert((current_row, current_col), formula);
-                    }
-                    current_col += repeated;
-                }
-                _ => {}
-            },
-            Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"table:table-row" if in_target_sheet => {
-                        current_row += current_row_repeated;
-                    }
-                    b"table:table" if in_target_sheet => {
-                        break; // Found our sheet, done
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(formulas)
-}
-/// Normalize ODS references (formulas, ranges, etc.) to a format consistent with XLSX.
-/// Strips "of:=" prefix, handles sheet-qualified references, and cleans up local sheet names.
-///
-/// If `visible_to_xml_row` is provided, converts visible row numbers (1-indexed, used in ODS formulas)
-/// to XML row numbers (0-indexed, used internally). This accounts for hidden rows.
-/// The mapping is ONLY applied to references pointing to `current_sheet_name` (or local references).
 pub fn normalize_ods_reference(
     reference: &str,
     preserve_sheet: bool,
     visible_to_xml_row: Option<&HashMap<u32, u32>>,
     current_sheet_name: Option<&str>,
 ) -> String {
-    use regex::Regex;
-    use std::sync::OnceLock;
+    // Strip "of:=" prefix if present
+    let input = reference.strip_prefix("of:=").unwrap_or(reference);
 
-    static ODS_REL_REF: OnceLock<Regex> = OnceLock::new();
-    static ODS_COL_REF: OnceLock<Regex> = OnceLock::new();
-    static ODS_ROW_REF: OnceLock<Regex> = OnceLock::new();
-    static ODS_SHEET_REF: OnceLock<Regex> = OnceLock::new();
-    static ODS_SHEET_REF_NO_BRACKET: OnceLock<Regex> = OnceLock::new();
-    static ODS_RECT_REF: OnceLock<Regex> = OnceLock::new();
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
 
-    let mut normalized = reference
-        .strip_prefix("of:=")
-        .unwrap_or(reference)
-        .to_string();
-
-    // 0. Replace rectangular ranges [.A1:.B2] -> A1:B2
-    // Matches [.A1:.B2]
-    let rect_ref = ODS_RECT_REF
-        .get_or_init(|| Regex::new(r"\[\.(\$?[A-Z]+\$?[0-9]+):\.(\$?[A-Z]+\$?[0-9]+)\]").unwrap());
-    normalized = rect_ref.replace_all(&normalized, "$1:$2").to_string();
-
-    // 0b. Replace sheet-qualified ranges [$Sheet.A1:.A2] -> Sheet!A1:A2
-    // Matches [$Sheet.A1:.B2], [$Sheet.$A$1:.$B$2]
-    // The colon is followed by a dot for relative/absolute mixing in ODS
-    static ODS_SHEET_RANGE_REF: OnceLock<Regex> = OnceLock::new();
-    let sheet_range_ref = ODS_SHEET_RANGE_REF
-        .get_or_init(|| Regex::new(r"\[\$([^.]+)\.([A-Za-z0-9$]+):\.([A-Za-z0-9$]+)\]").unwrap());
-    normalized = sheet_range_ref
-        .replace_all(&normalized, "$1!$2:$3")
-        .to_string();
-
-    // 0b2. Replace unbracketed sheet-qualified ranges $Sheet.A1:.A2 -> Sheet!A1:A2
-    // Matches $Sheet.A1:.B2 (common in database-range targets)
-    // We exclude '[' from the sheet name capture to avoid matching relative column refs like [.A:.A]
-    static ODS_SHEET_RANGE_NO_BRACKET_REF: OnceLock<Regex> = OnceLock::new();
-    let sheet_range_no_bracket_ref = ODS_SHEET_RANGE_NO_BRACKET_REF
-        .get_or_init(|| Regex::new(r"\$?([^.\[]+)\.([A-Za-z0-9$]+):\.([A-Za-z0-9$]+)").unwrap());
-    normalized = sheet_range_no_bracket_ref
-        .replace_all(&normalized, "$1!$2:$3")
-        .to_string();
-
-    if !preserve_sheet {
-        // 0c. Replace plain sheet-level ranges Sheet1.A1:Sheet1.B2 -> A1:B2
-        // Matches Sheet1.A1:Sheet1.B2, Sheet1.A1, etc.
-        // This is common in ODS conditional formatting targets.
-        // We strip the sheet name if it's the same for both parts of the range.
-        // Updated to handle both '.' (ODS native) and '!' (normalized) separators
-        static ODS_LOCAL_RANGE_REF: OnceLock<Regex> = OnceLock::new();
-        let local_range_ref = ODS_LOCAL_RANGE_REF.get_or_init(|| {
-            Regex::new(r"([^.!]+)[.!]([A-Z0-9$]+):([^.!]+)[.!]([A-Z0-9$]+)").unwrap()
-        });
-        normalized = local_range_ref
-            .replace_all(&normalized, |caps: &regex::Captures| {
-                if caps[1] == caps[3] {
-                    if caps[2] == caps[4] {
-                        caps[2].to_string()
+    while let Some(ch) = chars.next() {
+        match ch {
+            '[' => {
+                // Handle bracketed references: [.A1], [$Sheet.A1], [.A1:.B2]
+                parse_bracket_ref(&mut chars, &mut result, preserve_sheet);
+            }
+            '$' => {
+                // Handle $Sheet.A1 or $Sheet.A1:.$B$2 (unbracketed sheet reference)
+                if let Some(next) = chars.peek() {
+                    if next.is_alphabetic() {
+                        parse_dollar_sheet_ref(&mut chars, &mut result, preserve_sheet);
                     } else {
-                        format!("{}:{}", &caps[2], &caps[4])
+                        result.push(ch);
                     }
                 } else {
-                    format!("{}!{}:{}!{}", &caps[1], &caps[2], &caps[3], &caps[4])
+                    result.push(ch);
                 }
-            })
-            .to_string();
-
-        // 0d. Replace single local reference Sheet1.A1 -> A1
-        // Updated to handle both '.' and '!' separators
-        static ODS_LOCAL_SINGLE_REF: OnceLock<Regex> = OnceLock::new();
-        let local_single_ref =
-            ODS_LOCAL_SINGLE_REF.get_or_init(|| Regex::new(r"^([^.!]+)[.!]([A-Z0-9$]+)$").unwrap());
-        normalized = local_single_ref.replace_all(&normalized, "$2").to_string();
-
-        // 0e. Replace normalized sheet ranges Sheet1!A1:B2 -> A1:B2
-        // This handles cases where 0b/0b2 normalized the range to Excel format,
-        // but we want to strip the sheet name for local context parity.
-        static ODS_NORMALIZED_RANGE_REF: OnceLock<Regex> = OnceLock::new();
-        let normalized_range_ref = ODS_NORMALIZED_RANGE_REF
-            .get_or_init(|| Regex::new(r"^([^!]+)!([A-Z0-9$]+):([A-Z0-9$]+)$").unwrap());
-        normalized = normalized_range_ref
-            .replace_all(&normalized, "$2:$3")
-            .to_string();
+            }
+            _ => result.push(ch),
+        }
     }
 
-    // 1. Replace sheet references [$Sheet1.A1] -> Sheet1!A1 (BEFORE non-bracketed version)
-    // Matches [$Sheet.$A$1], [$Sheet.A1], etc.
-    // The cell reference part can have $ signs for absolute references
-    let sheet_ref =
-        ODS_SHEET_REF.get_or_init(|| Regex::new(r"\[\$([^.]+)\.(\$?[A-Z]+\$?[0-9]+)\]").unwrap());
-    normalized = sheet_ref.replace_all(&normalized, "$1!$2").to_string();
+    // Post-processing: handle plain Sheet.Cell references (without $ or brackets)
+    // This handles cases like "Sheet1.A1" or "Sheet1.B2:Sheet1.B4"
+    if !preserve_sheet {
+        result = strip_local_sheet_refs(&result);
+    }
 
-    // 2. Replace $SHEETNAME.CELLREF -> SHEETNAME!CELLREF (without brackets)
-    // Matches $INGRESOS.BC$50, $Sheet1.A1, $Sheet.$A$1 etc.
-    // This comes AFTER bracketed version, so it won't match already-processed [$SHEET.CELL]
-    let sheet_ref_no_bracket = ODS_SHEET_REF_NO_BRACKET
-        .get_or_init(|| Regex::new(r"\$([A-Za-z0-9_]+)\.(\$?[A-Z]+\$?[0-9]+)").unwrap());
-    normalized = sheet_ref_no_bracket
-        .replace_all(&normalized, "$1!$2")
-        .to_string();
-
-    // 3. Replace relative references [.A1] -> A1
-    // Matches [.A1], [.AA123]
-    let rel_ref = ODS_REL_REF.get_or_init(|| Regex::new(r"\[\.(\$?[A-Z]+\$?[0-9]+)\]").unwrap());
-    normalized = rel_ref.replace_all(&normalized, "$1").to_string();
-
-    // 4. Replace whole column references [.A:.A] -> A:A
-    // Matches [.A:.A], [.A:.B]
-    let col_ref = ODS_COL_REF.get_or_init(|| Regex::new(r"\[\.([A-Z]+):\.([A-Z]+)\]").unwrap());
-    normalized = col_ref.replace_all(&normalized, "$1:$2").to_string();
-
-    // 5. Replace whole row references [.1:.1] -> 1:1
-    // Matches [.1:.1], [.1:.10]
-    let row_ref = ODS_ROW_REF.get_or_init(|| Regex::new(r"\[\.([0-9]+):\.([0-9]+)\]").unwrap());
-    normalized = row_ref.replace_all(&normalized, "$1:$2").to_string();
-
-    // Final check for identical range parts (e.g. A1:A1 -> A1)
-    if let Some((start, end)) = normalized.split_once(':')
+    // Post-processing: handle identical range parts (A1:A1 → A1)
+    // BUT preserve whole column/row ranges (A:A, 1:1)
+    if let Some((start, end)) = result.split_once(':')
         && start == end
+        && !is_whole_column_or_row(start)
     {
         return start.to_string();
     }
 
-    // Convert visible row numbers to XML row numbers if mapping is provided
-    // This accounts for hidden rows in ODS files
+    // Convert visible row numbers to XML row numbers if mapping provided
     if let Some(row_map) = visible_to_xml_row {
-        // Regex to match cell references: Sheet!A1, A1, $A$1, etc.
-        // Captures: (optional sheet)(column)(row number)
-        static CELL_REF_PATTERN: OnceLock<Regex> = OnceLock::new();
-        let cell_ref = CELL_REF_PATTERN
-            .get_or_init(|| Regex::new(r"(?:([A-Za-z0-9_]+)!)?(\$?[A-Z]+)(\$?)([0-9]+)").unwrap());
-
-        normalized = cell_ref
-            .replace_all(&normalized, |caps: &regex::Captures| {
-                let sheet_name = caps.get(1).map(|m| m.as_str());
-                let sheet_prefix = sheet_name.map(|s| format!("{}!", s)).unwrap_or_default();
-                let col = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                let abs_marker = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-                let row_str = caps.get(4).map(|m| m.as_str()).unwrap_or("");
-
-                // ONLY convert row numbers for references to the CURRENT sheet
-                // This includes:
-                // 1. Local references (no sheet prefix)
-                // 2. Explicit references to the current sheet (e.g., CurrentSheet!A1)
-                let should_convert = if let Some(current_sheet) = current_sheet_name {
-                    sheet_name.is_none() || sheet_name == Some(current_sheet)
-                } else {
-                    // If no current sheet provided, only convert local references
-                    sheet_name.is_none()
-                };
-
-                if should_convert && let Ok(visible_row) = row_str.parse::<u32>() {
-                    // Convert visible row (1-indexed) to XML row (0-indexed)
-                    if let Some(&xml_row) = row_map.get(&visible_row) {
-                        // Convert back to 1-indexed for formula representation
-                        return format!("{}{}{}", col, abs_marker, xml_row + 1);
-                    }
-                }
-                // Keep original for cross-sheet references or if no mapping found
-                format!("{}{}{}{}", sheet_prefix, col, abs_marker, row_str)
-            })
-            .to_string();
+        result = convert_visible_rows(&result, row_map, current_sheet_name);
     }
 
-    normalized
+    // YOLO STRATEGY: Strip current sheet name at the very end
+    // If preserve_sheet=false and we know the current sheet, replace "CurrentSheet!" with ""
+    if !preserve_sheet && let Some(current_sheet) = current_sheet_name {
+        let sheet_prefix = format!("{}!", current_sheet);
+        result = result.replace(&sheet_prefix, "");
+    }
+
+    result
 }
+
+/// Check if a reference is a whole column (A) or whole row (1)
+fn is_whole_column_or_row(s: &str) -> bool {
+    let cleaned = s.trim_start_matches('$');
+    cleaned.chars().all(|c| c.is_alphabetic()) || cleaned.chars().all(|c| c.is_numeric())
+}
+
+/// Parse bracketed reference: [.A1], [$Sheet.A1], [.A1:.B2]
+fn parse_bracket_ref(
+    chars: &mut std::iter::Peekable<std::str::Chars>,
+    result: &mut String,
+    preserve_sheet: bool,
+) {
+    let mut bracket_content = String::new();
+    let mut depth = 1;
+
+    // Collect everything inside brackets
+    for ch in chars.by_ref() {
+        if ch == '[' {
+            depth += 1;
+            bracket_content.push(ch);
+        } else if ch == ']' {
+            depth -= 1;
+            if depth == 0 {
+                break;
+            }
+            bracket_content.push(ch);
+        } else {
+            bracket_content.push(ch);
+        }
+    }
+
+    // Parse the bracket content
+    if bracket_content.starts_with('$') {
+        // [$Sheet.A1] or [$Sheet.A1:.B2]
+        parse_sheet_qualified_ref(&bracket_content[1..], result, preserve_sheet);
+    } else if bracket_content.starts_with('.') {
+        // [.A1] or [.A1:.B2] or [.A:.A] or [.1:.1]
+        parse_local_ref(&bracket_content[1..], result);
+    } else {
+        // Unknown format, keep as-is
+        result.push('[');
+        result.push_str(&bracket_content);
+        result.push(']');
+    }
+}
+
+/// Parse sheet-qualified reference: Sheet.A1 or Sheet.A1:.B2
+/// Always outputs Sheet!Cell format, stripping handled at end of normalize_ods_reference
+fn parse_sheet_qualified_ref(content: &str, result: &mut String, _preserve_sheet: bool) {
+    if let Some(colon_pos) = content.find(':') {
+        // Range: Sheet.A1:.B2
+        let start_part = &content[..colon_pos];
+        let end_part = &content[colon_pos + 1..];
+
+        if let Some((sheet, cell)) = start_part.split_once('.') {
+            let end_cell = end_part.strip_prefix('.').unwrap_or(end_part);
+
+            // Always output Sheet!Cell format
+            result.push_str(sheet);
+            result.push('!');
+            result.push_str(cell);
+            result.push(':');
+            result.push_str(end_cell);
+        } else {
+            // Malformed, keep as-is
+            result.push_str(content);
+        }
+    } else {
+        // Single cell: Sheet.A1
+        if let Some((sheet, cell)) = content.split_once('.') {
+            // Always output Sheet!Cell format
+            result.push_str(sheet);
+            result.push('!');
+            result.push_str(cell);
+        } else {
+            // Malformed, keep as-is
+            result.push_str(content);
+        }
+    }
+}
+
+/// Parse local reference: .A1 or .A1:.B2 or .A:.A or .1:.1
+fn parse_local_ref(content: &str, result: &mut String) {
+    if let Some(colon_pos) = content.find(':') {
+        // Range: .A1:.B2 or .A:.A or .1:.1
+        let start = &content[..colon_pos];
+        let end = &content[colon_pos + 1..];
+        let end_clean = end.strip_prefix('.').unwrap_or(end);
+
+        result.push_str(start);
+        result.push(':');
+        result.push_str(end_clean);
+    } else {
+        // Single cell: .A1
+        result.push_str(content);
+    }
+}
+
+/// Parse $Sheet.A1 or $Sheet.A1:.$B$2 (unbracketed sheet reference)
+/// Always outputs Sheet!Cell format, stripping handled at end of normalize_ods_reference
+fn parse_dollar_sheet_ref(
+    chars: &mut std::iter::Peekable<std::str::Chars>,
+    result: &mut String,
+    _preserve_sheet: bool,
+) {
+    let mut sheet_name = String::new();
+
+    // Collect sheet name until '.'
+    while let Some(&ch) = chars.peek() {
+        if ch == '.' {
+            chars.next(); // consume '.'
+            break;
+        } else if ch.is_alphanumeric() || ch == '_' {
+            sheet_name.push(ch);
+            chars.next();
+        } else {
+            // Not a sheet reference, restore $
+            result.push('$');
+            result.push_str(&sheet_name);
+            return;
+        }
+    }
+
+    // Collect first cell reference
+    let mut cell_ref = String::new();
+    while let Some(&ch) = chars.peek() {
+        if ch == '$' || ch.is_alphabetic() || ch.is_numeric() {
+            cell_ref.push(ch);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+
+    if cell_ref.is_empty() {
+        // Malformed, restore original
+        result.push('$');
+        result.push_str(&sheet_name);
+        return;
+    }
+
+    // Check if there's a range (colon)
+    if chars.peek() == Some(&':') {
+        chars.next(); // consume ':'
+
+        // Check for optional dot before second cell
+        if chars.peek() == Some(&'.') {
+            chars.next(); // consume '.'
+        }
+
+        // Collect second cell reference
+        let mut cell_ref2 = String::new();
+        while let Some(&ch) = chars.peek() {
+            if ch == '$' || ch.is_alphabetic() || ch.is_numeric() {
+                cell_ref2.push(ch);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        // Always output Sheet!Cell format for ranges
+        result.push_str(&sheet_name);
+        result.push('!');
+        result.push_str(&cell_ref);
+        result.push(':');
+        result.push_str(&cell_ref2);
+    } else {
+        // Always output Sheet!Cell format for single cells
+        result.push_str(&sheet_name);
+        result.push('!');
+        result.push_str(&cell_ref);
+    }
+}
+
+/// Strip local sheet references from formula (Sheet1.A1 → A1, Sheet1.A1:Sheet1.B2 → A1:B2)
+/// Also converts Sheet.Cell to Sheet!Cell format for multi-sheet ranges
+/// Only handles plain Sheet.Cell (no $ or brackets), which are processed in post-processing
+/// Only strips if both parts of a range have the same sheet name
+fn strip_local_sheet_refs(formula: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static SHEET_RANGE_PATTERN: OnceLock<Regex> = OnceLock::new();
+    static SHEET_SINGLE_PATTERN: OnceLock<Regex> = OnceLock::new();
+
+    let mut result = formula.to_string();
+
+    // Convert plain Sheet.Cell to Sheet!Cell for multi-sheet ranges
+    // Pattern: Sheet1.A1:Sheet2.B2 → Sheet1!A1:Sheet2!B2
+    // Only matches Sheet.Cell (with dot), not Sheet!Cell (already processed)
+    let range_re = SHEET_RANGE_PATTERN.get_or_init(|| {
+        Regex::new(r"([A-Za-z0-9_]+)\.([A-Z$0-9]+):([A-Za-z0-9_]+)\.([A-Z$0-9]+)").unwrap()
+    });
+    result = range_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            if caps[1] == caps[3] {
+                // Same sheet, strip it
+                format!("{}:{}", &caps[2], &caps[4])
+            } else {
+                // Different sheets, convert to ! format
+                format!("{}!{}:{}!{}", &caps[1], &caps[2], &caps[3], &caps[4])
+            }
+        })
+        .to_string();
+
+    // Handle single cells: Sheet1.A1 → A1 (at start or end of string)
+    let single_re = SHEET_SINGLE_PATTERN
+        .get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)\.([A-Z$0-9]+)$").unwrap());
+    result = single_re.replace_all(&result, "$2").to_string();
+
+    result
+}
+
+/// Convert visible row numbers to XML row numbers
+fn convert_visible_rows(
+    formula: &str,
+    row_map: &HashMap<u32, u32>,
+    _current_sheet: Option<&str>,
+) -> String {
+    let mut result = String::with_capacity(formula.len());
+    let mut chars = formula.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch.is_alphabetic() || ch == '!' {
+            result.push(ch);
+
+            // After sheet separator or column letter, check for row number
+            if ch == '!'
+                || (ch.is_alphabetic() && chars.peek().is_some_and(|c| c.is_numeric() || *c == '$'))
+            {
+                // Collect column letters
+                while let Some(&c) = chars.peek() {
+                    if c.is_alphabetic() {
+                        result.push(c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+
+                // Check for $ before row number
+                let has_dollar = chars.peek() == Some(&'$');
+                if has_dollar {
+                    result.push('$');
+                    chars.next();
+                }
+
+                // Collect row number
+                let mut row_str = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c.is_numeric() {
+                        row_str.push(c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+
+                if !row_str.is_empty() {
+                    if let Ok(visible_row) = row_str.parse::<u32>()
+                        && let Some(&xml_row) = row_map.get(&visible_row)
+                    {
+                        result.push_str(&(xml_row + 1).to_string());
+                        continue;
+                    }
+                    result.push_str(&row_str);
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Container for all data parsed from an ODS file
+struct OdsData {
+    sheets: Vec<Sheet>,
+    defined_names: HashMap<String, String>,
+    hidden_sheets: Vec<String>,
+    has_macros: bool,
+    external_workbooks: Vec<ExternalWorkbook>,
+}
+
 pub struct OdsReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
+    data: Option<OdsData>,
 }
 
 impl<'a, R: std::io::Read + std::io::Seek> OdsReader<'a, R> {
     pub fn new(archive: &'a mut ZipArchive<R>) -> Result<Self> {
-        Ok(Self { archive })
+        Ok(Self {
+            archive,
+            data: None,
+        })
     }
 }
 
 impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
     fn read_sheets(&mut self) -> Result<Vec<Sheet>> {
+        // If data already parsed, return it
+        if let Some(ref data) = self.data {
+            return Ok(data.sheets.clone());
+        }
+
+        // Parse everything once and store
         // Initialize date styles map first to avoid borrow check issues
         let date_styles = extract_date_styles_from_ods(self.archive)?;
-        let hidden_sheets = extract_hidden_sheets_from_ods(self.archive)?;
 
-        // Extract external workbooks for formula normalization
-        let external_workbooks = self.read_external_workbooks()?;
+        // Collect hidden sheets from content.xml (style-based detection)
+        let mut hidden_sheets = Vec::new();
+        let mut hidden_styles = std::collections::HashSet::new();
+        let mut sheet_styles = Vec::new(); // (sheet_name, style_name)
+        
+        if let Ok(content_xml) = self.archive.by_name("content.xml") {
+            let mut reader = Reader::from_reader(BufReader::new(content_xml));
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+            
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"style:style" => {
+                        let mut style_name = String::new();
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"style:name" {
+                                style_name = attr.unescape_value()?.to_string();
+                            }
+                        }
+                        
+                        if !style_name.is_empty() {
+                            // Look for style:table-properties with table:display="false"
+                            let mut inner_buf = Vec::new();
+                            loop {
+                                match reader.read_event_into(&mut inner_buf) {
+                                    Ok(Event::Start(ee)) | Ok(Event::Empty(ee))
+                                        if ee.name().as_ref() == b"style:table-properties" =>
+                                    {
+                                        for attr in ee.attributes().flatten() {
+                                            if attr.key.as_ref() == b"table:display"
+                                                && attr.value.as_ref() == b"false"
+                                            {
+                                                hidden_styles.insert(style_name.clone());
+                                            }
+                                        }
+                                    }
+                                    Ok(Event::End(ee)) if ee.name().as_ref() == b"style:style" => break,
+                                    Ok(Event::Eof) => break,
+                                    Err(_) => break,
+                                    _ => {}
+                                }
+                                inner_buf.clear();
+                            }
+                        }
+                    }
+                    Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"table:table" => {
+                        let mut sheet_name = String::new();
+                        let mut style_name = String::new();
+                        
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"table:name" => sheet_name = attr.unescape_value()?.to_string(),
+                                b"table:style-name" => style_name = attr.unescape_value()?.to_string(),
+                                _ => {}
+                            }
+                        }
+                        
+                        if !sheet_name.is_empty() && !style_name.is_empty() {
+                            sheet_styles.push((sheet_name, style_name));
+                        }
+                    }
+                    Ok(Event::Eof) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+                buf.clear();
+            }
+            
+            // Match sheets to hidden styles
+            for (name, style) in sheet_styles {
+                if hidden_styles.contains(&style) {
+                    hidden_sheets.push(name);
+                }
+            }
+        }
+        
+        let mut external_workbooks = Vec::new();
+        let has_macros = has_macros(self.archive)?;
 
         let mut sheets = Vec::new();
 
@@ -1684,6 +984,19 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                     // Check if this table-source has an xlink:href attribute
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"xlink:href" {
+                            let href = attr.unescape_value()?.to_string();
+                            // Extract workbook path and add to external_workbooks
+                            if let Some(path) = href.strip_prefix("../") {
+                                if !external_workbooks
+                                    .iter()
+                                    .any(|wb: &ExternalWorkbook| wb.path == path)
+                                {
+                                    external_workbooks.push(ExternalWorkbook {
+                                        index: external_workbooks.len(),
+                                        path: path.to_string(),
+                                    });
+                                }
+                            }
                             // This sheet is from an external workbook, mark it to be skipped
                             skip_current_sheet = true;
                             break;
@@ -2232,6 +1545,15 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
             sheets.push(sheet);
         }
 
+        // Store all parsed data for future method calls
+        self.data = Some(OdsData {
+            sheets: sheets.clone(),
+            defined_names: HashMap::new(), // Will be populated by read_defined_names if needed
+            hidden_sheets,
+            has_macros,
+            external_workbooks,
+        });
+
         Ok(sheets)
     }
 
@@ -2328,19 +1650,43 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
     }
 
     fn read_hidden_sheets(&mut self) -> Result<Vec<String>> {
-        extract_hidden_sheets_from_ods(self.archive)
+        // Ensure data is parsed
+        if self.data.is_none() {
+            self.read_sheets()?;
+        }
+        Ok(self.data.as_ref().unwrap().hidden_sheets.clone())
     }
 
     fn has_macros(&mut self) -> Result<bool> {
-        has_macros(self.archive)
+        // Ensure data is parsed
+        if self.data.is_none() {
+            self.read_sheets()?;
+        }
+        Ok(self.data.as_ref().unwrap().has_macros)
     }
 
     fn read_external_links(&mut self) -> Result<Vec<String>> {
-        extract_external_links_ods(self.archive)
+        // Ensure data is parsed
+        if self.data.is_none() {
+            self.read_sheets()?;
+        }
+        // Derive from external_workbooks
+        Ok(self
+            .data
+            .as_ref()
+            .unwrap()
+            .external_workbooks
+            .iter()
+            .map(|wb| wb.path.clone())
+            .collect())
     }
 
     fn read_external_workbooks(&mut self) -> Result<Vec<super::ExternalWorkbook>> {
-        extract_external_workbooks_ods(self.archive)
+        // Ensure data is parsed
+        if self.data.is_none() {
+            self.read_sheets()?;
+        }
+        Ok(self.data.as_ref().unwrap().external_workbooks.clone())
     }
 }
 
@@ -2451,7 +1797,7 @@ mod tests {
         // With preserve=true (defined names), we want the full sheet qualification
         let expected_true = "Listas!$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, true, None, None),
+            normalize_ods_reference(raw, true, None, Some("Listas")),
             expected_true,
             "Failed with preserve=true"
         );
@@ -2460,26 +1806,27 @@ mod tests {
         // to avoid false circular references (ERR003 treat explicit self-sheet as non-trivial)
         let expected_false = "$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, false, None, None),
+            normalize_ods_reference(raw, false, None, Some("Listas")),
             expected_false,
             "Failed with preserve=false"
         );
     }
 
     #[test]
-    fn test_normalize_ods_strip_after_regex_match() {
-        // If 0b2 matches "$Sheet1.A1:.$B2" -> "Sheet1!A1:B2"
-        // 0c should SHOULD strip "Sheet1!" if preserve_sheet=false
+    fn test_normalize_ods_same_sheet_range_with_dot_prefix() {
+        // Test that ranges with dot prefix (.$Cell) indicating same sheet are normalized correctly
+        // Pattern: $Sheet.A1:.$B2 where .$ means "same sheet as A1"
         let raw = "$Sheet1.A1:.$B2";
-        // Currently (before fix) this prints "Sheet1!A1:B2"
-        // We want "A1:B2" if preserve_sheet=false (simulating local formula)
-        // With preserve=false, it should strip matched sheet names
-        assert_eq!(normalize_ods_reference(raw, false, None, None), "A1:$B2");
+        // With preserve=false, should strip the sheet name since it's the current sheet
+        assert_eq!(
+            normalize_ods_reference(raw, false, None, Some("Sheet1")),
+            "A1:$B2"
+        );
 
-        // Also check bracketed case
+        // Also check bracketed case: [$Sheet.A1:.$B2]
         let raw_bracket = "[$Sheet1.A1:.$B2]";
         assert_eq!(
-            normalize_ods_reference(raw_bracket, false, None, None),
+            normalize_ods_reference(raw_bracket, false, None, Some("Sheet1")),
             "A1:$B2"
         );
     }
@@ -2779,8 +2126,8 @@ fn test_extract_external_workbooks_with_test_asset() {
     const TEST_ODS: &[u8] = include_bytes!("../../../tests/minimal_test.ods");
     let cursor = std::io::Cursor::new(TEST_ODS);
     let mut archive = ZipArchive::new(cursor).unwrap();
-
-    let workbooks = extract_external_workbooks_ods(&mut archive).unwrap();
+    let mut reader = OdsReader::new(&mut archive).unwrap();
+    let workbooks = reader.read_external_workbooks().unwrap();
 
     // Verify external workbooks are extracted
     assert!(
