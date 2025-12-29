@@ -212,267 +212,6 @@ fn parse_ods_date(date_str: &str) -> Option<f64> {
     Some(total_days as f64 + time_fraction)
 }
 
-/// Extract date styles from ODS content.xml and styles.xml
-/// Returns a map of style_name -> excel_format_string
-///
-/// # Automatic Order Handling
-///
-/// When `number:automatic-order="true"` is set on a `number:date-style` element,
-/// this function treats day and month components as two-digit format (equivalent to
-/// `number:style="long"`) when no explicit `number:style` attribute is present.
-///
-/// This behavior aligns with:
-/// - Unicode CLDR standard patterns where `dd` and `MM` are standard for locale-aware formatting
-/// - ISO 8601 requirements for two-digit padding in international date representation
-/// - Observed behavior in LibreOffice Calc and other ODF-compliant applications
-///
-/// # Arguments
-///
-/// * `archive` - Mutable reference to the ODS ZIP archive
-///
-/// # Returns
-///
-/// A HashMap mapping style names to their Excel-compatible format strings
-pub fn extract_date_styles_from_ods(
-    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<std::collections::HashMap<String, String>> {
-    use std::collections::HashMap;
-
-    // Map: Data Style Name -> Format String (e.g., "N49" -> "dd/mm/yyyy")
-    let mut data_styles = HashMap::new();
-    // Map: Cell Style Name -> Data Style Name (e.g., "ce14" -> "N49")
-    let mut cell_styles = HashMap::new();
-
-    // Helper to parse a styles file (content.xml or styles.xml)
-    let mut parse_styles_file = |file: std::io::BufReader<zip::read::ZipFile>| -> Result<()> {
-        let mut reader = Reader::from_reader(file);
-        reader.config_mut().trim_text(false);
-
-        let mut buf = Vec::new();
-        let mut current_data_style_name = String::new();
-        let mut current_format = String::new();
-        let mut in_date_style = false;
-        let mut automatic_order = false;
-
-        loop {
-            match reader.read_event_into(&mut buf)? {
-                Event::Start(e) => {
-                    match e.name().as_ref() {
-                        b"number:date-style" => {
-                            in_date_style = true;
-                            current_format.clear();
-                            automatic_order = false;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.as_ref() {
-                                    b"style:name" => {
-                                        current_data_style_name =
-                                            attr.unescape_value()?.to_string();
-                                    }
-                                    b"number:automatic-order" => {
-                                        if attr.value.as_ref() == b"true" {
-                                            automatic_order = true;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        b"number:text-style" => {
-                            // Text format style (equivalent to "@" in XLSX)
-                            for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"style:name" {
-                                    let style_name = attr.unescape_value()?.to_string();
-                                    // Mark this as a text format with "@"
-                                    data_styles.insert(style_name, "@".to_string());
-                                }
-                            }
-                        }
-                        b"style:style" => {
-                            let mut is_cell_style = false;
-                            let mut style_name = String::new();
-                            let mut data_style_name = String::new();
-
-                            for attr in e.attributes().flatten() {
-                                match attr.key.as_ref() {
-                                    b"style:family" => {
-                                        if attr.value.as_ref() == b"table-cell" {
-                                            is_cell_style = true;
-                                        }
-                                    }
-                                    b"style:name" => {
-                                        style_name = attr.unescape_value()?.to_string();
-                                    }
-                                    b"style:data-style-name" => {
-                                        data_style_name = attr.unescape_value()?.to_string();
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            if is_cell_style
-                                && !style_name.is_empty()
-                                && !data_style_name.is_empty()
-                            {
-                                cell_styles.insert(style_name, data_style_name);
-                            }
-                        }
-                        b"number:day" if in_date_style => {
-                            let mut long = automatic_order;
-                            for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"number:style" {
-                                    long = attr.value.as_ref() == b"long";
-                                }
-                            }
-                            current_format.push_str(if long { "dd" } else { "d" });
-                        }
-                        b"number:month" if in_date_style => {
-                            let mut long = automatic_order;
-                            let mut textual = false;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.as_ref() {
-                                    b"number:style" => {
-                                        long = attr.value.as_ref() == b"long";
-                                    }
-                                    b"number:textual" => {
-                                        if attr.value.as_ref() == b"true" {
-                                            textual = true;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if textual {
-                                current_format.push_str(if long { "mmmm" } else { "mmm" });
-                            } else {
-                                current_format.push_str(if long { "mm" } else { "m" });
-                            }
-                        }
-                        b"number:year" if in_date_style => {
-                            let mut long = false;
-                            for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"number:style"
-                                    && attr.value.as_ref() == b"long"
-                                {
-                                    long = true;
-                                }
-                            }
-                            current_format.push_str(if long { "yyyy" } else { "yy" });
-                        }
-                        b"number:hours" if in_date_style => {
-                            current_format.push_str("hh");
-                        }
-                        b"number:minutes" if in_date_style => {
-                            current_format.push_str("mm");
-                        }
-                        b"number:seconds" if in_date_style => {
-                            current_format.push_str("ss");
-                        }
-                        b"number:text" if in_date_style => {
-                            // Will read text event next
-                        }
-                        _ => {}
-                    }
-                }
-                Event::Empty(e) => match e.name().as_ref() {
-                    b"number:day" if in_date_style => {
-                        let mut long = automatic_order;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"number:style" {
-                                long = attr.value.as_ref() == b"long";
-                            }
-                        }
-                        current_format.push_str(if long { "dd" } else { "d" });
-                    }
-                    b"number:month" if in_date_style => {
-                        let mut long = automatic_order;
-                        let mut textual = false;
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"number:style" => {
-                                    long = attr.value.as_ref() == b"long";
-                                }
-                                b"number:textual" => {
-                                    if attr.value.as_ref() == b"true" {
-                                        textual = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if textual {
-                            current_format.push_str(if long { "mmmm" } else { "mmm" });
-                        } else {
-                            current_format.push_str(if long { "mm" } else { "m" });
-                        }
-                    }
-                    b"number:year" if in_date_style => {
-                        let mut long = false;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"number:style"
-                                && attr.value.as_ref() == b"long"
-                            {
-                                long = true;
-                            }
-                        }
-                        current_format.push_str(if long { "yyyy" } else { "yy" });
-                    }
-                    b"number:hours" if in_date_style => {
-                        current_format.push_str("hh");
-                    }
-                    b"number:minutes" if in_date_style => {
-                        current_format.push_str("mm");
-                    }
-                    b"number:seconds" if in_date_style => {
-                        current_format.push_str("ss");
-                    }
-                    _ => {}
-                },
-                Event::Text(e) if in_date_style => {
-                    current_format.push_str(e.unescape()?.as_ref());
-                }
-                Event::End(e) => {
-                    if e.name().as_ref() == b"number:date-style" {
-                        if !current_data_style_name.is_empty() {
-                            data_styles
-                                .insert(current_data_style_name.clone(), current_format.clone());
-                        }
-                        in_date_style = false;
-                    }
-                }
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
-        }
-        Ok(())
-    };
-
-    // 1. Read automatic styles from content.xml
-    if let Ok(file) = archive.by_name("content.xml") {
-        parse_styles_file(BufReader::new(file))?;
-    }
-
-    // 2. Read styles from styles.xml (global styles)
-    if let Ok(file) = archive.by_name("styles.xml") {
-        parse_styles_file(BufReader::new(file))?;
-    }
-
-    // 3. Resolve Cell Styles to Format Strings
-    let mut resolved_styles = HashMap::new();
-    for (cell_style, data_style) in cell_styles {
-        if let Some(format) = data_styles.get(&data_style) {
-            resolved_styles.insert(cell_style, format.clone());
-        }
-    }
-
-    // Also include data styles directly, just in case
-    for (data_style, format) in data_styles {
-        resolved_styles.entry(data_style).or_insert(format);
-    }
-
-    Ok(resolved_styles)
-}
-
 /// Extract formulas from an ODS worksheet
 /// ODS formulas are stored in table:formula attribute
 pub fn normalize_ods_reference(
@@ -776,108 +515,34 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
             return Ok(data.sheets.clone());
         }
 
-        // Parse everything once and store
-        // Initialize date styles map first to avoid borrow check issues
-        let date_styles = extract_date_styles_from_ods(self.archive)?;
+        // ============================================================
+        // SINGLE PASS: Parse content.xml once for all concerns
+        // ============================================================
 
-        // Collect hidden sheets from content.xml (style-based detection)
+        let mut sheets = Vec::new();
+
+        // ============================================================
+        // STATE: Date styles extraction (from content.xml)
+        // ============================================================
+        let mut data_styles = HashMap::new();
+        let mut cell_styles = HashMap::new();
+        let mut date_styles = HashMap::new(); // Resolved styles for cell lookup
+        let mut current_data_style_name = String::new();
+        let mut current_format = String::new();
+        let mut in_date_style = false;
+        let mut automatic_order = false;
+
+        // ============================================================
+        // STATE: Hidden sheets detection
+        // ============================================================
         let mut hidden_sheets = Vec::new();
         let mut hidden_styles = std::collections::HashSet::new();
         let mut sheet_styles = Vec::new(); // (sheet_name, style_name)
 
-        if let Ok(content_xml) = self.archive.by_name("content.xml") {
-            let mut reader = Reader::from_reader(BufReader::new(content_xml));
-            reader.config_mut().trim_text(true);
-            let mut buf = Vec::new();
-
-            loop {
-                match reader.read_event_into(&mut buf) {
-                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                        if e.name().as_ref() == b"style:style" =>
-                    {
-                        let mut style_name = String::new();
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"style:name" {
-                                style_name = attr.unescape_value()?.to_string();
-                            }
-                        }
-
-                        if !style_name.is_empty() {
-                            // Look for style:table-properties with table:display="false"
-                            let mut inner_buf = Vec::new();
-                            loop {
-                                match reader.read_event_into(&mut inner_buf) {
-                                    Ok(Event::Start(ee)) | Ok(Event::Empty(ee))
-                                        if ee.name().as_ref() == b"style:table-properties" =>
-                                    {
-                                        for attr in ee.attributes().flatten() {
-                                            if attr.key.as_ref() == b"table:display"
-                                                && attr.value.as_ref() == b"false"
-                                            {
-                                                hidden_styles.insert(style_name.clone());
-                                            }
-                                        }
-                                    }
-                                    Ok(Event::End(ee)) if ee.name().as_ref() == b"style:style" => {
-                                        break;
-                                    }
-                                    Ok(Event::Eof) => break,
-                                    Err(_) => break,
-                                    _ => {}
-                                }
-                                inner_buf.clear();
-                            }
-                        }
-                    }
-                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                        if e.name().as_ref() == b"table:table" =>
-                    {
-                        let mut sheet_name = String::new();
-                        let mut style_name = String::new();
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:name" => sheet_name = attr.unescape_value()?.to_string(),
-                                b"table:style-name" => {
-                                    style_name = attr.unescape_value()?.to_string()
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        if !sheet_name.is_empty() && !style_name.is_empty() {
-                            sheet_styles.push((sheet_name, style_name));
-                        }
-                    }
-                    Ok(Event::Eof) => break,
-                    Err(_) => break,
-                    _ => {}
-                }
-                buf.clear();
-            }
-
-            // Match sheets to hidden styles
-            for (name, style) in sheet_styles {
-                if hidden_styles.contains(&style) {
-                    hidden_sheets.push(name);
-                }
-            }
-        }
-
+        // ============================================================
+        // STATE: Main sheet data parsing
+        // ============================================================
         let mut external_workbooks = Vec::new();
-        let has_macros = has_macros(self.archive)?;
-
-        let mut sheets = Vec::new();
-
-        let content_xml = match self.archive.by_name("content.xml") {
-            Ok(file) => file,
-            Err(_) => return Ok(sheets),
-        };
-
-        let mut reader = Reader::from_reader(BufReader::new(content_xml));
-        reader.config_mut().trim_text(true);
-
-        let mut buf = Vec::new();
         let mut current_sheet: Option<Sheet> = None;
         let mut current_row = 0u32;
         let mut row_repeated = 1u32;
@@ -891,614 +556,1153 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         let mut visible_row_counter = 1u32; // 1-indexed (ODS formula style)
         let mut visible_to_xml_row: HashMap<u32, u32> = HashMap::new();
 
-        loop {
-            match reader.read_event_into(&mut buf)? {
-                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"table:table" => {
-                    // Finalize previous sheet if it exists and it's not external
-                    if let Some(sheet) = current_sheet.take()
-                        && !skip_current_sheet
-                    {
-                        sheets.push(sheet);
-                    }
+        // ============================================================
+        // PARSE styles.xml FIRST to populate date_styles
+        // ============================================================
+        if let Ok(styles_xml) = self.archive.by_name("styles.xml") {
+            let mut reader = Reader::from_reader(BufReader::new(styles_xml));
+            reader.config_mut().trim_text(false);
+            let mut buf = Vec::new();
 
-                    let mut name = String::new();
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:name" {
-                            name = attr.unescape_value()?.to_string();
+            let mut current_data_style_name = String::new();
+            let mut current_format = String::new();
+            let mut in_date_style = false;
+            let mut automatic_order = false;
+
+            loop {
+                match reader.read_event_into(&mut buf)? {
+                    Event::Start(e) => {
+                        match e.name().as_ref() {
+                            b"number:date-style" => {
+                                in_date_style = true;
+                                current_format.clear();
+                                automatic_order = false;
+                                for attr in e.attributes().flatten() {
+                                    match attr.key.as_ref() {
+                                        b"style:name" => {
+                                            current_data_style_name =
+                                                attr.unescape_value()?.to_string();
+                                        }
+                                        b"number:automatic-order" => {
+                                            if attr.value.as_ref() == b"true" {
+                                                automatic_order = true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            b"number:text-style" => {
+                                for attr in e.attributes().flatten() {
+                                    if attr.key.as_ref() == b"style:name" {
+                                        let style_name = attr.unescape_value()?.to_string();
+                                        data_styles.insert(style_name.clone(), "@".to_string());
+                                        date_styles.insert(style_name, "@".to_string());
+                                    }
+                                }
+                            }
+                            b"style:style" => {
+                                let mut is_cell_style = false;
+                                let mut style_name = String::new();
+                                let mut data_style_name = String::new();
+
+                                for attr in e.attributes().flatten() {
+                                    match attr.key.as_ref() {
+                                        b"style:family" => {
+                                            if attr.value.as_ref() == b"table-cell" {
+                                                is_cell_style = true;
+                                            }
+                                        }
+                                        b"style:name" => {
+                                            style_name = attr.unescape_value()?.to_string();
+                                        }
+                                        b"style:data-style-name" => {
+                                            data_style_name = attr.unescape_value()?.to_string();
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                if is_cell_style
+                                    && !style_name.is_empty()
+                                    && !data_style_name.is_empty()
+                                {
+                                    cell_styles.insert(style_name.clone(), data_style_name.clone());
+                                    // Immediately resolve if data style is known
+                                    if let Some(format) = data_styles.get(&data_style_name) {
+                                        date_styles.insert(style_name, format.clone());
+                                    }
+                                }
+                            }
+                            b"number:day" if in_date_style => {
+                                let mut long = automatic_order;
+                                for attr in e.attributes().flatten() {
+                                    if attr.key.as_ref() == b"number:style" {
+                                        long = attr.value.as_ref() == b"long";
+                                    }
+                                }
+                                current_format.push_str(if long { "dd" } else { "d" });
+                            }
+                            b"number:month" if in_date_style => {
+                                let mut long = automatic_order;
+                                let mut textual = false;
+                                for attr in e.attributes().flatten() {
+                                    match attr.key.as_ref() {
+                                        b"number:style" => {
+                                            long = attr.value.as_ref() == b"long";
+                                        }
+                                        b"number:textual" => {
+                                            if attr.value.as_ref() == b"true" {
+                                                textual = true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if textual {
+                                    current_format.push_str(if long { "mmmm" } else { "mmm" });
+                                } else {
+                                    current_format.push_str(if long { "mm" } else { "m" });
+                                }
+                            }
+                            b"number:year" if in_date_style => {
+                                let mut long = false;
+                                for attr in e.attributes().flatten() {
+                                    if attr.key.as_ref() == b"number:style"
+                                        && attr.value.as_ref() == b"long"
+                                    {
+                                        long = true;
+                                    }
+                                }
+                                current_format.push_str(if long { "yyyy" } else { "yy" });
+                            }
+                            b"number:hours" if in_date_style => {
+                                current_format.push_str("hh");
+                            }
+                            b"number:minutes" if in_date_style => {
+                                current_format.push_str("mm");
+                            }
+                            b"number:seconds" if in_date_style => {
+                                current_format.push_str("ss");
+                            }
+                            b"number:text" if in_date_style => {
+                                // Will read text event next
+                            }
+                            _ => {}
                         }
                     }
-                    let mut new_sheet = Sheet::new(name.clone());
-                    new_sheet.visible = !hidden_sheets.contains(&name);
-                    current_sheet = Some(new_sheet);
-                    current_row = 0;
-                    current_col = 0; // Reset column tracking for new sheet
-                    skip_current_sheet = false; // Reset skip flag for new sheet
-                }
-                // Detect external sheets by checking for table:table-source
-                Event::Start(ref e) | Event::Empty(ref e)
-                    if e.name().as_ref() == b"table:table-source" =>
-                {
-                    // Check if this table-source has an xlink:href attribute
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"xlink:href" {
-                            let href = attr.unescape_value()?.to_string();
-                            // Extract workbook path and add to external_workbooks
-                            if let Some(path) = href.strip_prefix("../")
-                                && !external_workbooks
-                                    .iter()
-                                    .any(|wb: &ExternalWorkbook| wb.path == path)
-                            {
-                                external_workbooks.push(ExternalWorkbook {
-                                    index: external_workbooks.len(),
-                                    path: path.to_string(),
-                                });
+                    Event::Empty(e) => match e.name().as_ref() {
+                        b"number:day" if in_date_style => {
+                            let mut long = automatic_order;
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"number:style" {
+                                    long = attr.value.as_ref() == b"long";
+                                }
                             }
-                            // This sheet is from an external workbook, mark it to be skipped
-                            skip_current_sheet = true;
-                            // Fast-forward to the end of this table to avoid parsing millions of rows
-                            // CRITICAL: Start depth at 0 since we're already inside table:table element
-                            let mut depth = 0;
-                            let mut skip_buf = Vec::new();
-                            loop {
-                                match reader.read_event_into(&mut skip_buf)? {
-                                    Event::Start(ee) if ee.name().as_ref() == b"table:table" => {
-                                        depth += 1
+                            current_format.push_str(if long { "dd" } else { "d" });
+                        }
+                        b"number:month" if in_date_style => {
+                            let mut long = automatic_order;
+                            let mut textual = false;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"number:style" => {
+                                        long = attr.value.as_ref() == b"long";
                                     }
-                                    Event::End(ee) if ee.name().as_ref() == b"table:table" => {
-                                        if depth == 0 {
-                                            // This is the closing tag of the current external sheet
-                                            break;
+                                    b"number:textual" => {
+                                        if attr.value.as_ref() == b"true" {
+                                            textual = true;
                                         }
-                                        depth -= 1;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if textual {
+                                current_format.push_str(if long { "mmmm" } else { "mmm" });
+                            } else {
+                                current_format.push_str(if long { "mm" } else { "m" });
+                            }
+                        }
+                        b"number:year" if in_date_style => {
+                            let mut long = false;
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"number:style"
+                                    && attr.value.as_ref() == b"long"
+                                {
+                                    long = true;
+                                }
+                            }
+                            current_format.push_str(if long { "yyyy" } else { "yy" });
+                        }
+                        b"number:hours" if in_date_style => {
+                            current_format.push_str("hh");
+                        }
+                        b"number:minutes" if in_date_style => {
+                            current_format.push_str("mm");
+                        }
+                        b"number:seconds" if in_date_style => {
+                            current_format.push_str("ss");
+                        }
+                        _ => {}
+                    },
+                    Event::Text(e) if in_date_style => {
+                        current_format.push_str(e.unescape()?.as_ref());
+                    }
+                    Event::End(e) => {
+                        if e.name().as_ref() == b"number:date-style" {
+                            if !current_data_style_name.is_empty() {
+                                data_styles.insert(
+                                    current_data_style_name.clone(),
+                                    current_format.clone(),
+                                );
+                                date_styles.insert(
+                                    current_data_style_name.clone(),
+                                    current_format.clone(),
+                                );
+                                // Resolve any cell styles that reference this data style
+                                for (cell_style, data_style) in &cell_styles {
+                                    if data_style == &current_data_style_name {
+                                        date_styles
+                                            .insert(cell_style.clone(), current_format.clone());
+                                    }
+                                }
+                            }
+                            in_date_style = false;
+                        }
+                    }
+                    Event::Eof => break,
+                    _ => {}
+                }
+                buf.clear();
+            }
+        }
+
+        // ============================================================
+        // PARSE content.xml in a scope to drop reader before has_macros
+        // ============================================================
+        {
+            let content_xml = match self.archive.by_name("content.xml") {
+                Ok(file) => file,
+                Err(_) => return Ok(sheets),
+            };
+
+            let mut reader = Reader::from_reader(BufReader::new(content_xml));
+            reader.config_mut().trim_text(false);
+
+            let mut buf = Vec::new();
+
+            // ============================================================
+            // UNIFIED PARSING LOOP
+            // ============================================================
+
+            loop {
+                match reader.read_event_into(&mut buf)? {
+                    // --------------------------------------------------------
+                    // DATE STYLES: number:date-style
+                    // --------------------------------------------------------
+                    Event::Start(e) if e.name().as_ref() == b"number:date-style" => {
+                        in_date_style = true;
+                        current_format.clear();
+                        automatic_order = false;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"style:name" => {
+                                    current_data_style_name = attr.unescape_value()?.to_string();
+                                }
+                                b"number:automatic-order" => {
+                                    if attr.value.as_ref() == b"true" {
+                                        automatic_order = true;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    // DATE STYLES: number:text-style
+                    Event::Start(e) if e.name().as_ref() == b"number:text-style" => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"style:name" {
+                                let style_name = attr.unescape_value()?.to_string();
+                                data_styles.insert(style_name.clone(), "@".to_string());
+                                date_styles.insert(style_name, "@".to_string());
+                            }
+                        }
+                    }
+                    // DATE STYLES: style:style (for cell styles mapping)
+                    Event::Start(e) if e.name().as_ref() == b"style:style" => {
+                        let mut is_cell_style = false;
+                        let mut style_name = String::new();
+                        let mut data_style_name = String::new();
+                        let mut is_table_style = false;
+
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"style:family" => {
+                                    if attr.value.as_ref() == b"table-cell" {
+                                        is_cell_style = true;
+                                    } else if attr.value.as_ref() == b"table" {
+                                        is_table_style = true;
+                                    }
+                                }
+                                b"style:name" => {
+                                    style_name = attr.unescape_value()?.to_string();
+                                }
+                                b"style:data-style-name" => {
+                                    data_style_name = attr.unescape_value()?.to_string();
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Map cell styles to data styles for date formatting
+                        if is_cell_style && !style_name.is_empty() && !data_style_name.is_empty() {
+                            cell_styles.insert(style_name.clone(), data_style_name.clone());
+                            // Immediately resolve to date_styles if data style is already known
+                            if let Some(format) = data_styles.get(&data_style_name) {
+                                date_styles.insert(style_name.clone(), format.clone());
+                            }
+                        }
+
+                        // Check for hidden table styles
+                        if is_table_style && !style_name.is_empty() {
+                            let mut inner_buf = Vec::new();
+                            loop {
+                                match reader.read_event_into(&mut inner_buf)? {
+                                    Event::Start(ee) | Event::Empty(ee)
+                                        if ee.name().as_ref() == b"style:table-properties" =>
+                                    {
+                                        for attr in ee.attributes().flatten() {
+                                            if attr.key.as_ref() == b"table:display"
+                                                && attr.value.as_ref() == b"false"
+                                            {
+                                                hidden_styles.insert(style_name.clone());
+                                            }
+                                        }
+                                    }
+                                    Event::End(ee) if ee.name().as_ref() == b"style:style" => {
+                                        break;
                                     }
                                     Event::Eof => break,
                                     _ => {}
                                 }
-                                skip_buf.clear();
+                                inner_buf.clear();
                             }
-                            break;
                         }
                     }
-                }
-                Event::Start(e) if e.name().as_ref() == b"table:table-column" => {
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut hidden = false;
-                        let mut repeated = 1u32;
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:visibility" => {
-                                    if attr.value.as_ref() == b"collapse"
-                                        || attr.value.as_ref() == b"filter"
-                                    {
-                                        hidden = true;
+                    // DATE STYLES: date components (Start events)
+                    Event::Start(e) if in_date_style => {
+                        match e.name().as_ref() {
+                            b"number:day" => {
+                                let mut long = automatic_order;
+                                for attr in e.attributes().flatten() {
+                                    if attr.key.as_ref() == b"number:style" {
+                                        long = attr.value.as_ref() == b"long";
                                     }
                                 }
-                                b"table:number-columns-repeated" => {
-                                    repeated = attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                current_format.push_str(if long { "dd" } else { "d" });
+                            }
+                            b"number:month" => {
+                                let mut long = automatic_order;
+                                let mut textual = false;
+                                for attr in e.attributes().flatten() {
+                                    match attr.key.as_ref() {
+                                        b"number:style" => {
+                                            long = attr.value.as_ref() == b"long";
+                                        }
+                                        b"number:textual" => {
+                                            if attr.value.as_ref() == b"true" {
+                                                textual = true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
                                 }
-                                _ => {}
+                                if textual {
+                                    current_format.push_str(if long { "mmmm" } else { "mmm" });
+                                } else {
+                                    current_format.push_str(if long { "mm" } else { "m" });
+                                }
+                            }
+                            b"number:year" => {
+                                let mut long = false;
+                                for attr in e.attributes().flatten() {
+                                    if attr.key.as_ref() == b"number:style"
+                                        && attr.value.as_ref() == b"long"
+                                    {
+                                        long = true;
+                                    }
+                                }
+                                current_format.push_str(if long { "yyyy" } else { "yy" });
+                            }
+                            b"number:hours" => {
+                                current_format.push_str("hh");
+                            }
+                            b"number:minutes" => {
+                                current_format.push_str("mm");
+                            }
+                            b"number:seconds" => {
+                                current_format.push_str("ss");
+                            }
+                            b"number:text" => {
+                                // Will read text event next
+                            }
+                            _ => {}
+                        }
+                    }
+                    // DATE STYLES: date components (Empty events)
+                    Event::Empty(e) if in_date_style => match e.name().as_ref() {
+                        b"number:day" => {
+                            let mut long = automatic_order;
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"number:style" {
+                                    long = attr.value.as_ref() == b"long";
+                                }
+                            }
+                            current_format.push_str(if long { "dd" } else { "d" });
+                        }
+                        b"number:month" => {
+                            let mut long = automatic_order;
+                            let mut textual = false;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"number:style" => {
+                                        long = attr.value.as_ref() == b"long";
+                                    }
+                                    b"number:textual" => {
+                                        if attr.value.as_ref() == b"true" {
+                                            textual = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if textual {
+                                current_format.push_str(if long { "mmmm" } else { "mmm" });
+                            } else {
+                                current_format.push_str(if long { "mm" } else { "m" });
                             }
                         }
-                        if hidden {
-                            for _ in 0..repeated {
-                                sheet.hidden_columns.push(current_col);
-                                current_col += 1;
-                            }
-                        } else {
-                            current_col += repeated;
-                        }
-
-                        // If it's a start tag, we need to skip to its end tag to avoid nested column issues
-                        let mut col_buf = Vec::new();
-                        loop {
-                            match reader.read_event_into(&mut col_buf)? {
-                                Event::End(ref te)
-                                    if te.name().as_ref() == b"table:table-column" =>
+                        b"number:year" => {
+                            let mut long = false;
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"number:style"
+                                    && attr.value.as_ref() == b"long"
                                 {
-                                    break;
+                                    long = true;
                                 }
-                                Event::Eof => break,
-                                _ => {}
                             }
-                            col_buf.clear();
+                            current_format.push_str(if long { "yyyy" } else { "yy" });
                         }
+                        b"number:hours" => {
+                            current_format.push_str("hh");
+                        }
+                        b"number:minutes" => {
+                            current_format.push_str("mm");
+                        }
+                        b"number:seconds" => {
+                            current_format.push_str("ss");
+                        }
+                        _ => {}
+                    },
+                    // DATE STYLES: text content within date style
+                    Event::Text(e) if in_date_style => {
+                        current_format.push_str(e.unescape()?.as_ref());
                     }
-                }
-                Event::Empty(e) if e.name().as_ref() == b"table:table-column" => {
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut hidden = false;
-                        let mut repeated = 1u32;
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:visibility" => {
-                                    if attr.value.as_ref() == b"collapse"
-                                        || attr.value.as_ref() == b"filter"
-                                    {
-                                        hidden = true;
-                                    }
+                    // DATE STYLES: end of date-style
+                    Event::End(e) if e.name().as_ref() == b"number:date-style" => {
+                        if !current_data_style_name.is_empty() {
+                            data_styles
+                                .insert(current_data_style_name.clone(), current_format.clone());
+                            // Also add to date_styles directly
+                            date_styles
+                                .insert(current_data_style_name.clone(), current_format.clone());
+                            // Resolve any cell styles that reference this data style
+                            for (cell_style, data_style) in &cell_styles {
+                                if data_style == &current_data_style_name {
+                                    date_styles.insert(cell_style.clone(), current_format.clone());
                                 }
-                                b"table:number-columns-repeated" => {
-                                    repeated = attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                _ => {}
                             }
                         }
-                        if hidden {
-                            for _ in 0..repeated {
-                                sheet.hidden_columns.push(current_col);
-                                current_col += 1;
-                            }
-                        } else {
-                            current_col += repeated;
-                        }
+                        in_date_style = false;
                     }
-                }
-                Event::Start(e) if e.name().as_ref() == b"table:table-row" => {
-                    row_repeated = 1;
-                    current_col = 0;
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut hidden = false;
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:number-rows-repeated" => {
-                                    row_repeated =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:visibility" => {
-                                    if attr.value.as_ref() == b"collapse"
-                                        || attr.value.as_ref() == b"filter"
-                                    {
-                                        hidden = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        if hidden {
-                            for i in 0..row_repeated {
-                                sheet.hidden_rows.push(current_row + i);
-                            }
-                        } else {
-                            // Map visible row numbers to XML row indices
-                            for i in 0..row_repeated {
-                                visible_to_xml_row.insert(visible_row_counter, current_row + i);
-                                visible_row_counter += 1;
-                            }
-                        }
-                    }
-                }
-                Event::Empty(e) if e.name().as_ref() == b"table:table-row" => {
-                    // Empty row (self-closing tag) - no cells, just increment row counter
-                    row_repeated = 1;
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut hidden = false;
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:number-rows-repeated" => {
-                                    row_repeated =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:visibility" => {
-                                    if attr.value.as_ref() == b"collapse"
-                                        || attr.value.as_ref() == b"filter"
-                                    {
-                                        hidden = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if hidden {
-                            for r in 0..row_repeated {
-                                sheet.hidden_rows.push(current_row + r);
-                            }
-                        } else {
-                            // Map visible row numbers to XML row indices
-                            for r in 0..row_repeated {
-                                visible_to_xml_row.insert(visible_row_counter, current_row + r);
-                                visible_row_counter += 1;
-                            }
-                        }
-                    }
-                    current_row += row_repeated;
-                    current_col = 0;
-                }
-                Event::Start(e)
-                    if e.name().as_ref() == b"table:table-cell"
-                        || e.name().as_ref() == b"table:covered-table-cell" =>
-                {
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut col_repeated = 1u32;
-                        let mut cols_spanned = 1u32;
-                        let mut rows_spanned = 1u32;
-                        let mut formula = None;
-                        let mut value = CellValue::Empty;
-                        let mut has_value = false;
-                        let mut is_error_cell = false;
+                    // --------------------------------------------------------
+                    // MAIN SHEET DATA: table:table
+                    // --------------------------------------------------------
+                    Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"table:table" => {
+                        // Collect sheet style for hidden detection
+                        let mut sheet_name = String::new();
                         let mut style_name = String::new();
 
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"table:number-columns-repeated" => {
-                                    col_repeated =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:number-columns-spanned" => {
-                                    cols_spanned =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:number-rows-spanned" => {
-                                    rows_spanned =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:formula" => {
-                                    let raw_formula = attr.unescape_value()?;
-                                    let normalized = normalize_ods_reference(
-                                        &raw_formula,
-                                        false,
-                                        Some(&sheet.name),
-                                    );
-                                    // Apply external workbook normalization
-                                    formula = Some(normalize_ods_external_refs(
-                                        &normalized,
-                                        &external_workbooks,
-                                    ));
+                                b"table:name" => {
+                                    sheet_name = attr.unescape_value()?.to_string();
                                 }
                                 b"table:style-name" => {
                                     style_name = attr.unescape_value()?.to_string();
-                                }
-                                b"calcext:value-type" => {
-                                    if attr.value.as_ref() == b"error" {
-                                        is_error_cell = true;
-                                    }
-                                }
-                                b"office:value"
-                                | b"office:string-value"
-                                | b"office:boolean-value"
-                                | b"office:date-value" => {
-                                    let val_str = attr.unescape_value()?.to_string();
-                                    if !has_value {
-                                        value = match attr.key.as_ref() {
-                                            b"office:value" => {
-                                                if let Ok(n) = val_str.parse::<f64>() {
-                                                    CellValue::Number(n)
-                                                } else {
-                                                    CellValue::Text(val_str)
-                                                }
-                                            }
-                                            b"office:date-value" => {
-                                                // Convert ISO date to Serial Number
-                                                if let Some(n) = parse_ods_date(&val_str) {
-                                                    CellValue::Number(n)
-                                                } else {
-                                                    CellValue::Text(val_str)
-                                                }
-                                            }
-                                            b"office:boolean-value" => {
-                                                CellValue::Boolean(val_str == "true")
-                                            }
-                                            _ => CellValue::Text(val_str),
-                                        };
-                                        has_value = true;
-                                    }
                                 }
                                 _ => {}
                             }
                         }
 
-                        if cols_spanned > 1 || rows_spanned > 1 {
-                            sheet.merged_cells.push((
-                                current_row,
-                                current_col,
-                                current_row + rows_spanned - 1,
-                                current_col + cols_spanned - 1,
-                            ));
+                        if !sheet_name.is_empty() && !style_name.is_empty() {
+                            sheet_styles.push((sheet_name.clone(), style_name.clone()));
                         }
 
-                        // Read text content from <text:p> elements
-                        // This handles both error cells and regular text cells
-                        let mut text_content = String::new();
-                        let mut text_buf = Vec::new();
-                        loop {
-                            match reader.read_event_into(&mut text_buf)? {
-                                Event::Start(ref te) if te.name().as_ref() == b"text:p" => {
-                                    let mut p_buf = Vec::new();
-                                    loop {
-                                        match reader.read_event_into(&mut p_buf)? {
-                                            Event::Text(ref t) => {
-                                                text_content.push_str(t.unescape()?.as_ref());
-                                            }
-                                            Event::End(ref pe)
-                                                if pe.name().as_ref() == b"text:p" =>
-                                            {
+                        // Finalize previous sheet if it exists and it's not external
+                        if let Some(sheet) = current_sheet.take()
+                            && !skip_current_sheet
+                        {
+                            sheets.push(sheet);
+                        }
+
+                        let mut name = sheet_name;
+                        if name.is_empty() {
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"table:name" {
+                                    name = attr.unescape_value()?.to_string();
+                                }
+                            }
+                        }
+                        let mut new_sheet = Sheet::new(name.clone());
+                        // Check if this sheet's style is in hidden_styles
+                        let is_hidden =
+                            !style_name.is_empty() && hidden_styles.contains(&style_name);
+                        new_sheet.visible = !is_hidden;
+                        current_sheet = Some(new_sheet);
+                        current_row = 0;
+                        current_col = 0; // Reset column tracking for new sheet
+                        skip_current_sheet = false; // Reset skip flag for new sheet
+                    }
+                    // Detect external sheets by checking for table:table-source
+                    Event::Start(ref e) | Event::Empty(ref e)
+                        if e.name().as_ref() == b"table:table-source" =>
+                    {
+                        // Check if this table-source has an xlink:href attribute
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"xlink:href" {
+                                let href = attr.unescape_value()?.to_string();
+                                // Extract workbook path and add to external_workbooks
+                                if let Some(path) = href.strip_prefix("../")
+                                    && !external_workbooks
+                                        .iter()
+                                        .any(|wb: &ExternalWorkbook| wb.path == path)
+                                {
+                                    external_workbooks.push(ExternalWorkbook {
+                                        index: external_workbooks.len(),
+                                        path: path.to_string(),
+                                    });
+                                }
+                                // This sheet is from an external workbook, mark it to be skipped
+                                skip_current_sheet = true;
+                                // Fast-forward to the end of this table to avoid parsing millions of rows
+                                // CRITICAL: Start depth at 0 since we're already inside table:table element
+                                let mut depth = 0;
+                                let mut skip_buf = Vec::new();
+                                loop {
+                                    match reader.read_event_into(&mut skip_buf)? {
+                                        Event::Start(ee)
+                                            if ee.name().as_ref() == b"table:table" =>
+                                        {
+                                            depth += 1
+                                        }
+                                        Event::End(ee) if ee.name().as_ref() == b"table:table" => {
+                                            if depth == 0 {
+                                                // This is the closing tag of the current external sheet
                                                 break;
                                             }
-                                            Event::Eof => break,
-                                            _ => {}
+                                            depth -= 1;
                                         }
-                                        p_buf.clear();
+                                        Event::Eof => break,
+                                        _ => {}
                                     }
+                                    skip_buf.clear();
                                 }
-                                Event::End(ref te)
-                                    if te.name().as_ref() == b"table:table-cell"
-                                        || te.name().as_ref() == b"table:covered-table-cell" =>
-                                {
-                                    break;
-                                }
-                                Event::Eof => break,
-                                _ => {}
-                            }
-                            text_buf.clear();
-                        }
-
-                        // Use text content if we have it and no other value
-                        if !text_content.is_empty() {
-                            if is_error_cell {
-                                value = CellValue::formula_with_error("", text_content);
-                                has_value = true;
-                            } else if !has_value {
-                                // Only use text:p content if we don't have a value from attributes
-                                value = CellValue::Text(text_content);
-                                has_value = true;
+                                break;
                             }
                         }
+                    }
+                    Event::Start(e) if e.name().as_ref() == b"table:table-column" => {
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut hidden = false;
+                            let mut repeated = 1u32;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:visibility" => {
+                                        if attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter"
+                                        {
+                                            hidden = true;
+                                        }
+                                    }
+                                    b"table:number-columns-repeated" => {
+                                        repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if hidden {
+                                for _ in 0..repeated {
+                                    sheet.hidden_columns.push(current_col);
+                                    current_col += 1;
+                                }
+                            } else {
+                                current_col += repeated;
+                            }
 
-                        if has_value || formula.is_some() || !style_name.is_empty() {
-                            let mut cell_value = value;
-                            if let Some(f) = formula {
-                                cell_value = match cell_value {
-                                    CellValue::Formula {
-                                        cached_error: Some(msg),
-                                        ..
-                                    } => CellValue::formula_with_error(f, msg),
-                                    _ => CellValue::formula(f),
+                            // If it's a start tag, we need to skip to its end tag to avoid nested column issues
+                            let mut col_buf = Vec::new();
+                            loop {
+                                match reader.read_event_into(&mut col_buf)? {
+                                    Event::End(ref te)
+                                        if te.name().as_ref() == b"table:table-column" =>
+                                    {
+                                        break;
+                                    }
+                                    Event::Eof => break,
+                                    _ => {}
+                                }
+                                col_buf.clear();
+                            }
+                        }
+                    }
+                    Event::Empty(e) if e.name().as_ref() == b"table:table-column" => {
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut hidden = false;
+                            let mut repeated = 1u32;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:visibility" => {
+                                        if attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter"
+                                        {
+                                            hidden = true;
+                                        }
+                                    }
+                                    b"table:number-columns-repeated" => {
+                                        repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if hidden {
+                                for _ in 0..repeated {
+                                    sheet.hidden_columns.push(current_col);
+                                    current_col += 1;
+                                }
+                            } else {
+                                current_col += repeated;
+                            }
+                        }
+                    }
+                    Event::Start(e) if e.name().as_ref() == b"table:table-row" => {
+                        row_repeated = 1;
+                        current_col = 0;
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut hidden = false;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:number-rows-repeated" => {
+                                        row_repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:visibility" => {
+                                        if attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter"
+                                        {
+                                            hidden = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            if hidden {
+                                for i in 0..row_repeated {
+                                    sheet.hidden_rows.push(current_row + i);
+                                }
+                            } else {
+                                // Map visible row numbers to XML row indices
+                                for i in 0..row_repeated {
+                                    visible_to_xml_row.insert(visible_row_counter, current_row + i);
+                                    visible_row_counter += 1;
+                                }
+                            }
+                        }
+                    }
+                    Event::Empty(e) if e.name().as_ref() == b"table:table-row" => {
+                        // Empty row (self-closing tag) - no cells, just increment row counter
+                        row_repeated = 1;
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut hidden = false;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:number-rows-repeated" => {
+                                        row_repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:visibility" => {
+                                        if attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter"
+                                        {
+                                            hidden = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if hidden {
+                                for r in 0..row_repeated {
+                                    sheet.hidden_rows.push(current_row + r);
+                                }
+                            } else {
+                                // Map visible row numbers to XML row indices
+                                for r in 0..row_repeated {
+                                    visible_to_xml_row.insert(visible_row_counter, current_row + r);
+                                    visible_row_counter += 1;
+                                }
+                            }
+                        }
+                        current_row += row_repeated;
+                        current_col = 0;
+                    }
+                    Event::Start(e)
+                        if e.name().as_ref() == b"table:table-cell"
+                            || e.name().as_ref() == b"table:covered-table-cell" =>
+                    {
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut col_repeated = 1u32;
+                            let mut cols_spanned = 1u32;
+                            let mut rows_spanned = 1u32;
+                            let mut formula = None;
+                            let mut value = CellValue::Empty;
+                            let mut has_value = false;
+                            let mut is_error_cell = false;
+                            let mut style_name = String::new();
+
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:number-columns-repeated" => {
+                                        col_repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:number-columns-spanned" => {
+                                        cols_spanned =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:number-rows-spanned" => {
+                                        rows_spanned =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:formula" => {
+                                        let raw_formula = attr.unescape_value()?;
+                                        let normalized = normalize_ods_reference(
+                                            &raw_formula,
+                                            false,
+                                            Some(&sheet.name),
+                                        );
+                                        // Apply external workbook normalization
+                                        formula = Some(normalize_ods_external_refs(
+                                            &normalized,
+                                            &external_workbooks,
+                                        ));
+                                    }
+                                    b"table:style-name" => {
+                                        style_name = attr.unescape_value()?.to_string();
+                                    }
+                                    b"calcext:value-type" => {
+                                        if attr.value.as_ref() == b"error" {
+                                            is_error_cell = true;
+                                        }
+                                    }
+                                    b"office:value"
+                                    | b"office:string-value"
+                                    | b"office:boolean-value"
+                                    | b"office:date-value" => {
+                                        let val_str = attr.unescape_value()?.to_string();
+                                        if !has_value {
+                                            value = match attr.key.as_ref() {
+                                                b"office:value" => {
+                                                    if let Ok(n) = val_str.parse::<f64>() {
+                                                        CellValue::Number(n)
+                                                    } else {
+                                                        CellValue::Text(val_str)
+                                                    }
+                                                }
+                                                b"office:date-value" => {
+                                                    // Convert ISO date to Serial Number
+                                                    if let Some(n) = parse_ods_date(&val_str) {
+                                                        CellValue::Number(n)
+                                                    } else {
+                                                        CellValue::Text(val_str)
+                                                    }
+                                                }
+                                                b"office:boolean-value" => {
+                                                    CellValue::Boolean(val_str == "true")
+                                                }
+                                                _ => CellValue::Text(val_str),
+                                            };
+                                            has_value = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            if cols_spanned > 1 || rows_spanned > 1 {
+                                sheet.merged_cells.push((
+                                    current_row,
+                                    current_col,
+                                    current_row + rows_spanned - 1,
+                                    current_col + cols_spanned - 1,
+                                ));
+                            }
+
+                            // Read text content from <text:p> elements
+                            // This handles both error cells and regular text cells
+                            let mut text_content = String::new();
+                            let mut text_buf = Vec::new();
+                            loop {
+                                match reader.read_event_into(&mut text_buf)? {
+                                    Event::Start(ref te) if te.name().as_ref() == b"text:p" => {
+                                        let mut p_buf = Vec::new();
+                                        loop {
+                                            match reader.read_event_into(&mut p_buf)? {
+                                                Event::Text(ref t) => {
+                                                    text_content.push_str(t.unescape()?.as_ref());
+                                                }
+                                                Event::End(ref pe)
+                                                    if pe.name().as_ref() == b"text:p" =>
+                                                {
+                                                    break;
+                                                }
+                                                Event::Eof => break,
+                                                _ => {}
+                                            }
+                                            p_buf.clear();
+                                        }
+                                    }
+                                    Event::End(ref te)
+                                        if te.name().as_ref() == b"table:table-cell"
+                                            || te.name().as_ref()
+                                                == b"table:covered-table-cell" =>
+                                    {
+                                        break;
+                                    }
+                                    Event::Eof => break,
+                                    _ => {}
+                                }
+                                text_buf.clear();
+                            }
+
+                            // Use text content if we have it and no other value
+                            if !text_content.is_empty() {
+                                if is_error_cell {
+                                    value = CellValue::formula_with_error("", text_content);
+                                    has_value = true;
+                                } else if !has_value {
+                                    // Only use text:p content if we don't have a value from attributes
+                                    value = CellValue::Text(text_content);
+                                    has_value = true;
+                                }
+                            }
+
+                            if has_value || formula.is_some() || !style_name.is_empty() {
+                                let mut cell_value = value;
+                                if let Some(f) = formula {
+                                    cell_value = match cell_value {
+                                        CellValue::Formula {
+                                            cached_error: Some(msg),
+                                            ..
+                                        } => CellValue::formula_with_error(f, msg),
+                                        _ => CellValue::formula(f),
+                                    };
+                                }
+
+                                // Look up format string from style
+                                let num_fmt = if !style_name.is_empty() {
+                                    date_styles.get(&style_name).cloned()
+                                } else {
+                                    None
                                 };
-                            }
 
-                            // Look up format string from style
-                            let num_fmt = if !style_name.is_empty() {
-                                date_styles.get(&style_name).cloned()
-                            } else {
-                                None
-                            };
+                                // Check if this is a text-formatted number
+                                // In ODS, text format is indicated by num_fmt == "@"
+                                if num_fmt.as_deref() == Some("@")
+                                    && let CellValue::Number(n) = cell_value
+                                {
+                                    // Convert number to text
+                                    cell_value = CellValue::Text(n.to_string());
+                                }
 
-                            // Check if this is a text-formatted number
-                            // In ODS, text format is indicated by num_fmt == "@"
-                            if num_fmt.as_deref() == Some("@")
-                                && let CellValue::Number(n) = cell_value
-                            {
-                                // Convert number to text
-                                cell_value = CellValue::Text(n.to_string());
-                            }
+                                for r in 0..row_repeated {
+                                    for c in 0..col_repeated {
+                                        let cell = Cell {
+                                            row: current_row + r,
+                                            col: current_col + c,
+                                            value: cell_value.clone(),
+                                            num_fmt: num_fmt.clone(),
+                                        };
+                                        sheet
+                                            .cells
+                                            .insert((current_row + r, current_col + c), cell);
 
-                            for r in 0..row_repeated {
-                                for c in 0..col_repeated {
-                                    let cell = Cell {
-                                        row: current_row + r,
-                                        col: current_col + c,
-                                        value: cell_value.clone(),
-                                        num_fmt: num_fmt.clone(),
-                                    };
-                                    sheet.cells.insert((current_row + r, current_col + c), cell);
-
-                                    // Update used_range for any inserted cell (value, formula, or style)
-                                    let row_pos = current_row + r;
-                                    let col_pos = current_col + c;
-                                    if let Some((max_row, max_col)) = sheet.used_range {
-                                        sheet.used_range = Some((
-                                            max_row.max(row_pos + 1),
-                                            max_col.max(col_pos + 1),
-                                        ));
-                                    } else {
-                                        sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                        // Update used_range for any inserted cell (value, formula, or style)
+                                        let row_pos = current_row + r;
+                                        let col_pos = current_col + c;
+                                        if let Some((max_row, max_col)) = sheet.used_range {
+                                            sheet.used_range = Some((
+                                                max_row.max(row_pos + 1),
+                                                max_col.max(col_pos + 1),
+                                            ));
+                                        } else {
+                                            sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                        }
                                     }
                                 }
                             }
+
+                            // Multiply repeated by spanned to get true column consumption
+                            current_col += col_repeated;
                         }
-
-                        // Multiply repeated by spanned to get true column consumption
-                        current_col += col_repeated;
                     }
-                }
-                Event::Empty(e)
-                    if e.name().as_ref() == b"table:table-cell"
-                        || e.name().as_ref() == b"table:covered-table-cell" =>
-                {
-                    if let Some(ref mut sheet) = current_sheet {
-                        let mut col_repeated = 1u32;
-                        let mut cols_spanned = 1u32;
-                        let mut rows_spanned = 1u32;
-                        let mut formula = None;
-                        let mut style_name = String::new();
+                    Event::Empty(e)
+                        if e.name().as_ref() == b"table:table-cell"
+                            || e.name().as_ref() == b"table:covered-table-cell" =>
+                    {
+                        if let Some(ref mut sheet) = current_sheet {
+                            let mut col_repeated = 1u32;
+                            let mut cols_spanned = 1u32;
+                            let mut rows_spanned = 1u32;
+                            let mut formula = None;
+                            let mut style_name = String::new();
 
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"table:number-columns-repeated" => {
+                                        col_repeated =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:number-columns-spanned" => {
+                                        cols_spanned =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:number-rows-spanned" => {
+                                        rows_spanned =
+                                            attr.unescape_value()?.parse::<u32>().unwrap_or(1);
+                                    }
+                                    b"table:formula" => {
+                                        let raw_formula = attr.unescape_value()?;
+                                        formula = Some(normalize_ods_reference(
+                                            &raw_formula,
+                                            false,
+                                            Some(&sheet.name),
+                                        ));
+                                    }
+                                    b"table:style-name" => {
+                                        style_name = attr.unescape_value()?.to_string();
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            // Check if this empty cell is actually a merged cell
+                            if cols_spanned > 1 || rows_spanned > 1 {
+                                sheet.merged_cells.push((
+                                    current_row,
+                                    current_col,
+                                    current_row + rows_spanned - 1,
+                                    current_col + cols_spanned - 1,
+                                ));
+                            }
+
+                            // If it's an empty cell but has a formula or style, we should store it.
+                            if formula.is_some() || !style_name.is_empty() {
+                                let cell_value =
+                                    formula.map(CellValue::formula).unwrap_or(CellValue::Empty);
+
+                                // Look up format string from style
+                                let num_fmt = if !style_name.is_empty() {
+                                    date_styles.get(&style_name).cloned()
+                                } else {
+                                    None
+                                };
+
+                                for r in 0..row_repeated {
+                                    for c in 0..col_repeated {
+                                        let cell = Cell {
+                                            row: current_row + r,
+                                            col: current_col + c,
+                                            value: cell_value.clone(),
+                                            num_fmt: num_fmt.clone(),
+                                        };
+                                        sheet
+                                            .cells
+                                            .insert((current_row + r, current_col + c), cell);
+
+                                        // Update used_range for any inserted cell (formula or style)
+                                        let row_pos = current_row + r;
+                                        let col_pos = current_col + c;
+                                        if let Some((max_row, max_col)) = sheet.used_range {
+                                            sheet.used_range = Some((
+                                                max_row.max(row_pos + 1),
+                                                max_col.max(col_pos + 1),
+                                            ));
+                                        } else {
+                                            sheet.used_range = Some((row_pos + 1, col_pos + 1));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Multiply repeated by spanned to get true column consumption
+                            current_col += col_repeated;
+                        }
+                    }
+                    Event::Start(e) if e.name().as_ref() == b"calcext:conditional-format" => {
                         for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"table:number-columns-repeated" => {
-                                    col_repeated =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:number-columns-spanned" => {
-                                    cols_spanned =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:number-rows-spanned" => {
-                                    rows_spanned =
-                                        attr.unescape_value()?.parse::<u32>().unwrap_or(1);
-                                }
-                                b"table:formula" => {
-                                    let raw_formula = attr.unescape_value()?;
-                                    formula = Some(normalize_ods_reference(
-                                        &raw_formula,
-                                        false,
-                                        Some(&sheet.name),
-                                    ));
-                                }
-                                b"table:style-name" => {
-                                    style_name = attr.unescape_value()?.to_string();
-                                }
-                                _ => {}
+                            if attr.key.as_ref() == b"calcext:target-range-address" {
+                                current_cf_range = Some(attr.unescape_value()?.to_string());
                             }
                         }
-
-                        // Check if this empty cell is actually a merged cell
-                        if cols_spanned > 1 || rows_spanned > 1 {
-                            sheet.merged_cells.push((
-                                current_row,
-                                current_col,
-                                current_row + rows_spanned - 1,
-                                current_col + cols_spanned - 1,
-                            ));
+                    }
+                    Event::End(e) if e.name().as_ref() == b"calcext:conditional-format" => {
+                        current_cf_range = None;
+                    }
+                    Event::Start(e) if e.name().as_ref() == b"calcext:condition" => {
+                        if let Some(ref mut sheet) = current_sheet {
+                            sheet.conditional_formatting_count += 1;
+                            if let Some(ref range) = current_cf_range {
+                                sheet
+                                    .conditional_formatting_ranges
+                                    .push(normalize_ods_reference(range, false, None));
+                            }
                         }
+                    }
+                    // standard ODS conditional formatting
+                    Event::Start(e) if e.name().as_ref() == b"table:conditional-formatting" => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"table:target-range-address" {
+                                current_cf_range = Some(attr.unescape_value()?.to_string());
+                            }
+                        }
+                    }
+                    Event::End(e) if e.name().as_ref() == b"table:conditional-formatting" => {
+                        current_cf_range = None;
+                    }
+                    Event::Start(e)
+                        if e.name().as_ref() == b"table:conditional-formatting-rule" =>
+                    {
+                        if let Some(ref mut sheet) = current_sheet {
+                            sheet.conditional_formatting_count += 1;
+                            if let Some(ref range) = current_cf_range {
+                                sheet
+                                    .conditional_formatting_ranges
+                                    .push(normalize_ods_reference(range, false, None));
+                            }
+                        }
+                    }
+                    Event::Empty(e) if e.name().as_ref() == b"calcext:condition" => {
+                        if let Some(ref mut sheet) = current_sheet {
+                            sheet.conditional_formatting_count += 1;
+                            if let Some(ref range) = current_cf_range {
+                                sheet
+                                    .conditional_formatting_ranges
+                                    .push(normalize_ods_reference(range, false, None));
+                            }
+                        }
+                    }
+                    Event::End(e) if e.name().as_ref() == b"table:table-row" => {
+                        current_row += row_repeated;
+                        current_col = 0;
+                    }
+                    Event::End(e) if e.name().as_ref() == b"table:table" => {
+                        // Calculate used range for the sheet before finalizing
+                        // This must happen here (not at sheet finalization) because it needs to run
+                        // for ALL sheets, whether they have conditional formatting or not
+                        if let Some(ref mut sheet) = current_sheet {
+                            let cells_range = calculate_used_range(&sheet.cells);
 
-                        // If it's an empty cell but has a formula or style, we should store it.
-                        if formula.is_some() || !style_name.is_empty() {
-                            let cell_value =
-                                formula.map(CellValue::formula).unwrap_or(CellValue::Empty);
-
-                            // Look up format string from style
-                            let num_fmt = if !style_name.is_empty() {
-                                date_styles.get(&style_name).cloned()
-                            } else {
-                                None
+                            // Merge styled cell tracking with value cells
+                            // Both are already in count format (0-indexed position + 1)
+                            sheet.used_range = match (sheet.used_range, cells_range) {
+                                (Some((s_row, s_col)), Some((c_row, c_col))) => {
+                                    Some((s_row.max(c_row), s_col.max(c_col)))
+                                }
+                                (Some(s), None) => Some(s),
+                                (None, Some(c)) => Some(c),
+                                (None, None) => None,
                             };
 
-                            for r in 0..row_repeated {
-                                for c in 0..col_repeated {
-                                    let cell = Cell {
-                                        row: current_row + r,
-                                        col: current_col + c,
-                                        value: cell_value.clone(),
-                                        num_fmt: num_fmt.clone(),
-                                    };
-                                    sheet.cells.insert((current_row + r, current_col + c), cell);
-
-                                    // Update used_range for any inserted cell (formula or style)
-                                    let row_pos = current_row + r;
-                                    let col_pos = current_col + c;
-                                    if let Some((max_row, max_col)) = sheet.used_range {
-                                        sheet.used_range = Some((
-                                            max_row.max(row_pos + 1),
-                                            max_col.max(col_pos + 1),
-                                        ));
-                                    } else {
-                                        sheet.used_range = Some((row_pos + 1, col_pos + 1));
-                                    }
+                            // Include hidden rows/columns in used_range for format parity
+                            // Both ODS and XLSX should report ALL empty rows/columns (visible or hidden)
+                            if let Some((mut rows, mut cols)) = sheet.used_range {
+                                if let Some(&max_hidden_row) = sheet.hidden_rows.iter().max() {
+                                    rows = rows.max(max_hidden_row + 1);
                                 }
+                                if let Some(&max_hidden_col) = sheet.hidden_columns.iter().max() {
+                                    cols = cols.max(max_hidden_col + 1);
+                                }
+                                sheet.used_range = Some((rows, cols));
                             }
                         }
+                    }
 
-                        // Multiply repeated by spanned to get true column consumption
-                        current_col += col_repeated;
+                    // Handle conditional formatting that appears after table closing tag
+                    Event::Start(e) if e.name().as_ref() == b"calcext:conditional-formats" => {
+                        // This wrapper appears after </table:table>, continue processing
                     }
-                }
-                Event::Start(e) if e.name().as_ref() == b"calcext:conditional-format" => {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"calcext:target-range-address" {
-                            current_cf_range = Some(attr.unescape_value()?.to_string());
-                        }
+                    Event::End(e) if e.name().as_ref() == b"calcext:conditional-formats" => {
+                        // End of conditional formatting section
+                        // Don't finalize the sheet here - the table end handler will do it
                     }
+                    Event::Eof => break,
+                    _ => {}
                 }
-                Event::End(e) if e.name().as_ref() == b"calcext:conditional-format" => {
-                    current_cf_range = None;
-                }
-                Event::Start(e) if e.name().as_ref() == b"calcext:condition" => {
-                    if let Some(ref mut sheet) = current_sheet {
-                        sheet.conditional_formatting_count += 1;
-                        if let Some(ref range) = current_cf_range {
-                            sheet
-                                .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None));
-                        }
-                    }
-                }
-                // standard ODS conditional formatting
-                Event::Start(e) if e.name().as_ref() == b"table:conditional-formatting" => {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:target-range-address" {
-                            current_cf_range = Some(attr.unescape_value()?.to_string());
-                        }
-                    }
-                }
-                Event::End(e) if e.name().as_ref() == b"table:conditional-formatting" => {
-                    current_cf_range = None;
-                }
-                Event::Start(e) if e.name().as_ref() == b"table:conditional-formatting-rule" => {
-                    if let Some(ref mut sheet) = current_sheet {
-                        sheet.conditional_formatting_count += 1;
-                        if let Some(ref range) = current_cf_range {
-                            sheet
-                                .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None));
-                        }
-                    }
-                }
-                Event::Empty(e) if e.name().as_ref() == b"calcext:condition" => {
-                    if let Some(ref mut sheet) = current_sheet {
-                        sheet.conditional_formatting_count += 1;
-                        if let Some(ref range) = current_cf_range {
-                            sheet
-                                .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None));
-                        }
-                    }
-                }
-                Event::End(e) if e.name().as_ref() == b"table:table-row" => {
-                    current_row += row_repeated;
-                    current_col = 0;
-                }
-                Event::End(e) if e.name().as_ref() == b"table:table" => {
-                    // Calculate used range for the sheet before finalizing
-                    // This must happen here (not at sheet finalization) because it needs to run
-                    // for ALL sheets, whether they have conditional formatting or not
-                    if let Some(ref mut sheet) = current_sheet {
-                        let cells_range = calculate_used_range(&sheet.cells);
-
-                        // Merge styled cell tracking with value cells
-                        // Both are already in count format (0-indexed position + 1)
-                        sheet.used_range = match (sheet.used_range, cells_range) {
-                            (Some((s_row, s_col)), Some((c_row, c_col))) => {
-                                Some((s_row.max(c_row), s_col.max(c_col)))
-                            }
-                            (Some(s), None) => Some(s),
-                            (None, Some(c)) => Some(c),
-                            (None, None) => None,
-                        };
-
-                        // Include hidden rows/columns in used_range for format parity
-                        // Both ODS and XLSX should report ALL empty rows/columns (visible or hidden)
-                        if let Some((mut rows, mut cols)) = sheet.used_range {
-                            if let Some(&max_hidden_row) = sheet.hidden_rows.iter().max() {
-                                rows = rows.max(max_hidden_row + 1);
-                            }
-                            if let Some(&max_hidden_col) = sheet.hidden_columns.iter().max() {
-                                cols = cols.max(max_hidden_col + 1);
-                            }
-                            sheet.used_range = Some((rows, cols));
-                        }
-                    }
-                }
-
-                // Handle conditional formatting that appears after table closing tag
-                Event::Start(e) if e.name().as_ref() == b"calcext:conditional-formats" => {
-                    // This wrapper appears after </table:table>, continue processing
-                }
-                Event::End(e) if e.name().as_ref() == b"calcext:conditional-formats" => {
-                    // End of conditional formatting section
-                    // Don't finalize the sheet here - the table end handler will do it
-                }
-                Event::Eof => break,
-                _ => {}
+                buf.clear();
             }
-            buf.clear();
+
+            // Finalize the last sheet if it exists and it's not external
+            if let Some(sheet) = current_sheet
+                && !skip_current_sheet
+            {
+                sheets.push(sheet);
+            }
+        } // End of content.xml parsing scope
+
+        // ============================================================
+        // POST-PROCESSING: Final resolution of any remaining styles
+        // ============================================================
+        // Resolve any cell styles that weren't resolved during parsing
+        for (cell_style, data_style) in &cell_styles {
+            if !date_styles.contains_key(cell_style) {
+                if let Some(format) = data_styles.get(data_style) {
+                    date_styles.insert(cell_style.clone(), format.clone());
+                }
+            }
+        }
+        // Also add data styles directly to date_styles
+        for (data_style, format) in &data_styles {
+            date_styles
+                .entry(data_style.clone())
+                .or_insert(format.clone());
         }
 
-        // Finalize the last sheet if it exists and it's not external
-        if let Some(sheet) = current_sheet
-            && !skip_current_sheet
-        {
-            sheets.push(sheet);
+        // ============================================================
+        // HIDDEN SHEETS: Match sheets to hidden styles
+        // ============================================================
+        for (name, style) in sheet_styles {
+            if hidden_styles.contains(&style) {
+                hidden_sheets.push(name);
+            }
         }
+
+        // ============================================================
+        // MACROS: Check if file contains macros
+        // ============================================================
+        let has_macros = has_macros(self.archive)?;
 
         // Store all parsed data for future method calls
         self.data = Some(OdsData {
@@ -2142,27 +2346,4 @@ fn test_sheet_visibility_ods() {
             assert!(!sheet.visible, "Sheet '{}' should be hidden", sheet.name);
         }
     }
-}
-
-#[test]
-fn test_extract_date_styles_with_automatic_order() {
-    const TEST_ODS: &[u8] = include_bytes!("../../../tests/minimal_test.ods");
-    let cursor = std::io::Cursor::new(TEST_ODS);
-    let mut archive = ZipArchive::new(cursor).unwrap();
-
-    let date_styles = extract_date_styles_from_ods(&mut archive).unwrap();
-
-    // Verify that style N70 (with automatic-order="true") is parsed correctly
-    // This style is used in cell D8 of "Indexing tests" sheet
-    // Expected: "dd/mm/yy hh:mm" (two-digit day and month)
-    // Not: "d/m/yy hh:mm" (single-digit)
-    let n70_style = date_styles.get("N70");
-    assert!(n70_style.is_some(), "Style N70 should exist in date styles");
-
-    let format = n70_style.unwrap();
-    assert!(
-        format.contains("dd") && format.contains("mm"),
-        "Style N70 with automatic-order should use two-digit day/month: got '{}'",
-        format
-    );
 }
