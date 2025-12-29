@@ -10,9 +10,9 @@ use regex::Regex;
 /// Hardcoded values make maintenance difficult and hide business logic.
 ///
 /// Configuration:
-/// - `ignore_hardcoded_num_values`: List of specific numbers (as strings) to ignore (e.g. ["1.5"])
-/// - `ignore_hardcoded_int_values`: If true, ignore all integer hardcoded values.
-/// - `ignore_hardcoded_power_of_ten`: If true, ignore all power of ten hardcoded values (10, 100, 0.1, etc).
+/// - `ignore_hardcoded_num_values`: List of specific numbers (as floats/ints) to ignore (default: list of common constants like 0, 0.25, 1, 3600)
+/// - `ignore_hardcoded_int_values`: If true, ignore all integer hardcoded values (default: false).
+/// - `ignore_hardcoded_power_of_ten`: If true, ignore all power of ten hardcoded values (10, 100, 0.1, etc) (default: true).
 pub struct HardcodedValuesInFormulasRule {
     config: LinterConfig,
 }

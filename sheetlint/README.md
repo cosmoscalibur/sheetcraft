@@ -93,5 +93,5 @@ disabled_rules = ["UX", "SM"]
 | **FORM005** | Empty string logic tests (=A1="") | Yes | None |
 | **FORM006** | Deep formula nesting | No | `max_formula_nesting` (int, default 5) |
 | **FORM007** | Deep IF statement nesting | No | `max_if_nesting` (int, default 5) |
-| **FORM008** | Hardcoded numeric values in formulas | Yes | `ignore_hardcoded_int_values` (bool, default true), `ignore_hardcoded_power_of_ten` (bool, default true), `ignore_hardcoded_num_values` (`list<string>`, default []) |
+| **FORM008** | Hardcoded numeric values in formulas | Yes | `ignore_hardcoded_int_values` (bool, default false), `ignore_hardcoded_power_of_ten` (bool, default true), `ignore_hardcoded_num_values` (`list<float>`, default [0, 0.25, ..., 3600]) |
 | **FORM009** | Usage of VLOOKUP/HLOOKUP (recommend XLOOKUP or INDEX/MATCH) | Yes | None |

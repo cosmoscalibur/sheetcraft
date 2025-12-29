@@ -11,52 +11,24 @@ use std::collections::{HashSet, VecDeque};
 ///
 /// Volatile functions (like NOW, TODAY, RAND) recalculate every time the sheet recalculates,
 /// potentially causing performance issues in large workbooks.
-///
-/// # Configuration
-///
-/// * `volatile_functions` - Array of function names to treat as volatile.
-///   Defaults: NOW, TODAY, RAND, RANDBETWEEN, OFFSET, INDIRECT, INFO, CELL.
-pub struct VolatileFunctionsRule {
-    volatile_functions: Vec<String>,
-}
+///   Fixed list of volatile functions as internal constants.
+const VOLATILE_FUNCTIONS: &[&str] = &[
+    "NOW",
+    "TODAY",
+    "RAND",
+    "RANDBETWEEN",
+    "OFFSET",
+    "INDIRECT",
+    "INFO",
+    "CELL",
+];
+
+#[derive(Default)]
+pub struct VolatileFunctionsRule;
 
 impl VolatileFunctionsRule {
-    pub fn new(config: &LinterConfig) -> Self {
-        // Default list of volatile functions
-        let default_functions = [
-            "NOW",
-            "TODAY",
-            "RAND",
-            "RANDBETWEEN",
-            "OFFSET",
-            "INDIRECT",
-            "INFO",
-            "CELL",
-        ];
-
-        // Get from global/sheet scope instead of rules.PERF004
-        let volatile_functions = config
-            .get_param_array("volatile_functions", None)
-            .unwrap_or_else(|| default_functions.iter().map(|s| s.to_string()).collect());
-
-        Self { volatile_functions }
-    }
-}
-
-impl Default for VolatileFunctionsRule {
-    fn default() -> Self {
-        Self {
-            volatile_functions: vec![
-                "NOW".to_string(),
-                "TODAY".to_string(),
-                "RAND".to_string(),
-                "RANDBETWEEN".to_string(),
-                "OFFSET".to_string(),
-                "INDIRECT".to_string(),
-                "INFO".to_string(),
-                "CELL".to_string(),
-            ],
-        }
+    pub fn new(_config: &LinterConfig) -> Self {
+        Self
     }
 }
 
@@ -85,12 +57,12 @@ impl LinterRule for VolatileFunctionsRule {
                 if let Some(formula) = cell.value.as_formula() {
                     let formula_upper = formula.to_uppercase();
 
-                    for func in &self.volatile_functions {
+                    for func in VOLATILE_FUNCTIONS {
                         // Check if function appears in formula
                         // Look for function name followed by opening parenthesis
                         if formula_upper.contains(&format!("{}(", func)) {
                             function_cells
-                                .entry(func.clone())
+                                .entry(func.to_string())
                                 .or_default()
                                 .push((cell.row, cell.col));
                             break; // Only count each cell once
@@ -225,7 +197,7 @@ mod tests {
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule::default();
+        let rule = VolatileFunctionsRule;
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
@@ -275,7 +247,7 @@ mod tests {
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule::default();
+        let rule = VolatileFunctionsRule;
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2);
@@ -314,7 +286,7 @@ mod tests {
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule::default();
+        let rule = VolatileFunctionsRule;
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
