@@ -62,24 +62,45 @@ pub trait WorkbookReader {
 /// use sheetrs::reader::read_workbook;
 /// let params = read_workbook("tests/minimal_test.xlsx").unwrap();
 /// ```
+/// Read a workbook from a file path
+///
+/// This function detects the file format based on extension and delegates to `read_workbook_from_reader`.
 pub fn read_workbook<P: AsRef<Path>>(path: P) -> Result<Workbook> {
     let path_ref = path.as_ref();
-
     let file = File::open(path_ref)
         .with_context(|| format!("Failed to open file: {}", path_ref.display()))?;
-    let mut archive = ZipArchive::new(file).context("Failed to open zip archive")?;
 
-    let is_xlsx = path_ref
-        .extension()
-        .and_then(|s| s.to_str())
+    let extension = path_ref.extension().and_then(|s| s.to_str());
+    let mut workbook = read_workbook_from_reader(file, extension)?;
+
+    // Preserve the original path
+    workbook.path = path_ref.to_path_buf();
+    Ok(workbook)
+}
+
+/// Read a workbook from a generic reader (must implement Read + Seek)
+///
+/// # Arguments
+///
+/// * `reader` - Any source that implements `std::io::Read` and `std::io::Seek` (e.g., `File`, `Cursor`)
+/// * `extension` - Optional hint for the file format ("xlsx", "xlsm", "ods")
+pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
+    reader: R,
+    extension: Option<&str>,
+) -> Result<Workbook> {
+    let mut archive = ZipArchive::new(reader).context("Failed to open zip archive")?;
+
+    let is_xlsx = extension
         .map(|s| s.eq_ignore_ascii_case("xlsx") || s.eq_ignore_ascii_case("xlsm"))
         .unwrap_or(false);
 
-    let is_ods = path_ref
-        .extension()
-        .and_then(|s| s.to_str())
+    let is_ods = extension
         .map(|s| s.eq_ignore_ascii_case("ods"))
         .unwrap_or(false);
+
+    // If extension is unknown, we could try to detect by contents,
+    // but for now we'll stick to extension-based or default to one if Zip format allows.
+    // In practice, we usually know the extension.
 
     let (sheets, defined_names, hidden_sheets, has_macros, external_workbooks) = if is_xlsx {
         let mut reader = XlsxReader::new(&mut archive)?;
@@ -90,7 +111,8 @@ pub fn read_workbook<P: AsRef<Path>>(path: P) -> Result<Workbook> {
             reader.has_macros()?,
             reader.read_external_workbooks()?,
         )
-    } else if is_ods {
+    } else if is_ods || (!is_xlsx && archive.by_name("content.xml").is_ok()) {
+        // Simple heuristic for ODS if no extension: check for content.xml
         let mut reader = OdsReader::new(&mut archive)?;
         let sheets = reader.read_sheets()?;
         let defined_names = reader.read_defined_names()?;
@@ -101,12 +123,22 @@ pub fn read_workbook<P: AsRef<Path>>(path: P) -> Result<Workbook> {
             reader.has_macros()?,
             reader.read_external_workbooks()?,
         )
+    } else if is_xlsx || archive.by_name("[Content_Types].xml").is_ok() {
+        // Simple heuristic for XLSX if no extension: check for [Content_Types].xml
+        let mut reader = XlsxReader::new(&mut archive)?;
+        (
+            reader.read_sheets()?,
+            reader.read_defined_names()?,
+            reader.read_hidden_sheets()?,
+            reader.has_macros()?,
+            reader.read_external_workbooks()?,
+        )
     } else {
-        return Err(anyhow::anyhow!("Unsupported file format"));
+        return Err(anyhow::anyhow!("Unsupported or unrecognizable file format"));
     };
 
     Ok(Workbook {
-        path: path_ref.to_path_buf(),
+        path: Path::new("").to_path_buf(), // Default empty path for reader
         sheets,
         defined_names,
         hidden_sheets,
