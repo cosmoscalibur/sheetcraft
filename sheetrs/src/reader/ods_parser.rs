@@ -478,7 +478,6 @@ pub fn extract_date_styles_from_ods(
 pub fn normalize_ods_reference(
     reference: &str,
     preserve_sheet: bool,
-    visible_to_xml_row: Option<&HashMap<u32, u32>>,
     current_sheet_name: Option<&str>,
 ) -> String {
     // Strip "of:=" prefix if present
@@ -522,11 +521,6 @@ pub fn normalize_ods_reference(
         && !is_whole_column_or_row(start)
     {
         return start.to_string();
-    }
-
-    // Convert visible row numbers to XML row numbers if mapping provided
-    if let Some(row_map) = visible_to_xml_row {
-        result = convert_visible_rows(&result, row_map, current_sheet_name);
     }
 
     // YOLO STRATEGY: Strip current sheet name at the very end
@@ -749,69 +743,6 @@ fn strip_local_sheet_refs(formula: &str) -> String {
     let single_re = SHEET_SINGLE_PATTERN
         .get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)\.([A-Z$0-9]+)$").unwrap());
     result = single_re.replace_all(&result, "$2").to_string();
-
-    result
-}
-
-/// Convert visible row numbers to XML row numbers
-fn convert_visible_rows(
-    formula: &str,
-    row_map: &HashMap<u32, u32>,
-    _current_sheet: Option<&str>,
-) -> String {
-    let mut result = String::with_capacity(formula.len());
-    let mut chars = formula.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch.is_alphabetic() || ch == '!' {
-            result.push(ch);
-
-            // After sheet separator or column letter, check for row number
-            if ch == '!'
-                || (ch.is_alphabetic() && chars.peek().is_some_and(|c| c.is_numeric() || *c == '$'))
-            {
-                // Collect column letters
-                while let Some(&c) = chars.peek() {
-                    if c.is_alphabetic() {
-                        result.push(c);
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                // Check for $ before row number
-                let has_dollar = chars.peek() == Some(&'$');
-                if has_dollar {
-                    result.push('$');
-                    chars.next();
-                }
-
-                // Collect row number
-                let mut row_str = String::new();
-                while let Some(&c) = chars.peek() {
-                    if c.is_numeric() {
-                        row_str.push(c);
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                if !row_str.is_empty() {
-                    if let Ok(visible_row) = row_str.parse::<u32>()
-                        && let Some(&xml_row) = row_map.get(&visible_row)
-                    {
-                        result.push_str(&(xml_row + 1).to_string());
-                        continue;
-                    }
-                    result.push_str(&row_str);
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-    }
 
     result
 }
@@ -1185,7 +1116,6 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     let normalized = normalize_ods_reference(
                                         &raw_formula,
                                         false,
-                                        Some(&visible_to_xml_row),
                                         Some(&sheet.name),
                                     );
                                     // Apply external workbook normalization
@@ -1380,7 +1310,6 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     formula = Some(normalize_ods_reference(
                                         &raw_formula,
                                         false,
-                                        Some(&visible_to_xml_row),
                                         Some(&sheet.name),
                                     ));
                                 }
@@ -1458,7 +1387,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if let Some(ref range) = current_cf_range {
                             sheet
                                 .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None, None));
+                                .push(normalize_ods_reference(range, false, None));
                         }
                     }
                 }
@@ -1479,7 +1408,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if let Some(ref range) = current_cf_range {
                             sheet
                                 .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None, None));
+                                .push(normalize_ods_reference(range, false, None));
                         }
                     }
                 }
@@ -1489,7 +1418,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if let Some(ref range) = current_cf_range {
                             sheet
                                 .conditional_formatting_ranges
-                                .push(normalize_ods_reference(range, false, None, None));
+                                .push(normalize_ods_reference(range, false, None));
                         }
                     }
                 }
@@ -1604,7 +1533,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
 
                         if !name.is_empty() && !cell_range_address.is_empty() {
                             let normalized =
-                                normalize_ods_reference(&cell_range_address, true, None, None);
+                                normalize_ods_reference(&cell_range_address, true, None);
                             defined_names.insert(name, normalized);
                         }
                     } else if in_database_ranges && e.name().as_ref() == b"table:database-range" {
@@ -1626,12 +1555,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if !name.is_empty() && !target_range_address.is_empty() {
                             // Filter out internal ODS names that start with __Anonymous_Sheet_DB__
                             if !name.starts_with("__Anonymous_Sheet_DB__") {
-                                let normalized = normalize_ods_reference(
-                                    &target_range_address,
-                                    true,
-                                    None,
-                                    None,
-                                );
+                                let normalized =
+                                    normalize_ods_reference(&target_range_address, true, None);
                                 defined_names.insert(name, normalized);
                             }
                         }
@@ -1723,19 +1648,19 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_basic() {
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.A1:.B2])", false, None, None),
+            normalize_ods_reference("of:=SUM([.A1:.B2])", false, None),
             "SUM(A1:B2)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=[.A1]+[.B1]", false, None, None),
+            normalize_ods_reference("of:=[.A1]+[.B1]", false, None),
             "A1+B1"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.A:.A])", false, None, None),
+            normalize_ods_reference("of:=SUM([.A:.A])", false, None),
             "SUM(A:A)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.1:.1])", false, None, None),
+            normalize_ods_reference("of:=SUM([.1:.1])", false, None),
             "SUM(1:1)"
         );
     }
@@ -1743,15 +1668,15 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_sheet() {
         assert_eq!(
-            normalize_ods_reference("of:=[$Sheet1.A1]*2", false, None, None),
+            normalize_ods_reference("of:=[$Sheet1.A1]*2", false, None),
             "Sheet1!A1*2"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([$Sheet1.A1:.B2])", false, None, None),
+            normalize_ods_reference("of:=SUM([$Sheet1.A1:.B2])", false, None),
             "SUM(Sheet1!A1:B2)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=$Sheet1.$A$1+$Sheet1.B1", false, None, None),
+            normalize_ods_reference("of:=$Sheet1.$A$1+$Sheet1.B1", false, None),
             "Sheet1!$A$1+Sheet1!B1"
         );
     }
@@ -1759,11 +1684,11 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_mixed() {
         assert_eq!(
-            normalize_ods_reference("of:=[.A1:.$B$2]", false, None, None),
+            normalize_ods_reference("of:=[.A1:.$B$2]", false, None),
             "A1:$B$2"
         );
         assert_eq!(
-            normalize_ods_reference("of:=[.A$1]+$Sheet1.B$2", false, None, None),
+            normalize_ods_reference("of:=[.A$1]+$Sheet1.B$2", false, None),
             "A$1+Sheet1!B$2"
         );
     }
@@ -1772,22 +1697,22 @@ mod tests {
     fn test_normalize_ods_range() {
         // Local range with redundant sheet names
         assert_eq!(
-            normalize_ods_reference("Sheet1.B2:Sheet1.B4", false, None, None),
+            normalize_ods_reference("Sheet1.B2:Sheet1.B4", false, None),
             "B2:B4"
         );
         // Single cell ref
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1", false, None, None),
+            normalize_ods_reference("Sheet1.A1", false, None),
             "A1"
         );
         // Multi-sheet range
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet2.B2", false, None, None),
+            normalize_ods_reference("Sheet1.A1:Sheet2.B2", false, None),
             "Sheet1!A1:Sheet2!B2"
         );
         // Absolute local ref
         assert_eq!(
-            normalize_ods_reference("Sheet1.$A$1", false, None, None),
+            normalize_ods_reference("Sheet1.$A$1", false, None),
             "$A$1"
         );
     }
@@ -1801,7 +1726,7 @@ mod tests {
         // With preserve=true (defined names), we want the full sheet qualification
         let expected_true = "Listas!$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, true, None, Some("Listas")),
+            normalize_ods_reference(raw, true, Some("Listas")),
             expected_true,
             "Failed with preserve=true"
         );
@@ -1810,7 +1735,7 @@ mod tests {
         // to avoid false circular references (ERR003 treat explicit self-sheet as non-trivial)
         let expected_false = "$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, false, None, Some("Listas")),
+            normalize_ods_reference(raw, false, Some("Listas")),
             expected_false,
             "Failed with preserve=false"
         );
@@ -1823,14 +1748,14 @@ mod tests {
         let raw = "$Sheet1.A1:.$B2";
         // With preserve=false, should strip the sheet name since it's the current sheet
         assert_eq!(
-            normalize_ods_reference(raw, false, None, Some("Sheet1")),
+            normalize_ods_reference(raw, false, Some("Sheet1")),
             "A1:$B2"
         );
 
         // Also check bracketed case: [$Sheet.A1:.$B2]
         let raw_bracket = "[$Sheet1.A1:.$B2]";
         assert_eq!(
-            normalize_ods_reference(raw_bracket, false, None, Some("Sheet1")),
+            normalize_ods_reference(raw_bracket, false, Some("Sheet1")),
             "A1:$B2"
         );
     }
@@ -1839,19 +1764,19 @@ mod tests {
     fn test_normalize_ods_preserve_sheet() {
         // Should preserve sheet name even if it looks local
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1", true, None, None),
+            normalize_ods_reference("Sheet1.A1", true, None),
             "Sheet1.A1"
         );
         // Should preserve absolute local ref
         assert_eq!(
-            normalize_ods_reference("Sheet1.$G$2", true, None, None),
+            normalize_ods_reference("Sheet1.$G$2", true, None),
             "Sheet1.$G$2"
         );
         // Normal ranges should still be processed if they don't match the strip pattern
         // But our strip pattern in 0c matches: ([^.]+)\.([A-Z0-9$]+):([^.]+)\.([A-Z0-9$]+)
         // If preserve=true, this pattern is skipped.
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet1.B2", true, None, None),
+            normalize_ods_reference("Sheet1.A1:Sheet1.B2", true, None),
             "Sheet1.A1:Sheet1.B2"
         );
     }
@@ -1860,12 +1785,12 @@ mod tests {
     fn test_normalize_ods_reference_single_cell_range() {
         // PERF004 regression: "Sheet1.A1:Sheet1.A1" should normalize to "A1"
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet1.A1", false, None, None),
+            normalize_ods_reference("Sheet1.A1:Sheet1.A1", false, None),
             "A1"
         );
-        assert_eq!(normalize_ods_reference("A1:A1", false, None, None), "A1");
+        assert_eq!(normalize_ods_reference("A1:A1", false, None), "A1");
         assert_eq!(
-            normalize_ods_reference("[.A1:.A1]", false, None, None),
+            normalize_ods_reference("[.A1:.A1]", false, None),
             "A1"
         );
     }
