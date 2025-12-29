@@ -279,32 +279,73 @@ mod date_format_parity_tests {
 #[cfg(test)]
 mod external_workbook_parity_tests {
     use super::*;
-    use std::io::Cursor;
 
     #[test]
-    fn test_external_workbook_parity_ods_xlsx() {
-        const TEST_ODS: &[u8] = include_bytes!("../../../tests/minimal_test.ods");
-        const TEST_XLSX: &[u8] = include_bytes!("../../../tests/minimal_test.xlsx");
+    fn test_parity_external_workbook() {
+        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let ods_path = format!("{}/../tests/minimal_test.ods", root);
+        let xlsx_path = format!("{}/../tests/minimal_test.xlsx", root);
 
-        let mut archive_ods = ZipArchive::new(Cursor::new(TEST_ODS)).unwrap();
-        let mut reader_ods = OdsReader::new(&mut archive_ods).unwrap();
-        let workbooks_ods = reader_ods.read_external_workbooks().unwrap();
+        let ods_wb = read_workbook(&ods_path).unwrap();
+        let xlsx_wb = read_workbook(&xlsx_path).unwrap();
 
-        let mut archive_xlsx = ZipArchive::new(Cursor::new(TEST_XLSX)).unwrap();
-        let mut reader_xlsx = XlsxReader::new(&mut archive_xlsx).unwrap();
-        let workbooks_xlsx = reader_xlsx.read_external_workbooks().unwrap();
+        // 1. Both files has external workbooks count 1
+        assert_eq!(
+            ods_wb.external_workbooks.len(),
+            1,
+            "ODS should have exactly 1 external workbook"
+        );
+        assert_eq!(
+            xlsx_wb.external_workbooks.len(),
+            1,
+            "XLSX should have exactly 1 external workbook"
+        );
 
-        // Note: ODS may have duplicates (relative path in metadata + full path in formulas)
-        // This is a known issue to be fixed separately
-        // For now, verify that basenames from XLSX are present in ODS
-        let ods_basenames: Vec<&str> = workbooks_ods.iter().map(|wb| wb.path.as_str()).collect();
+        // 2. External workbook unique element is equal between both (basename check)
+        let ods_ext = std::path::Path::new(&ods_wb.external_workbooks[0].path)
+            .file_name()
+            .unwrap();
+        let xlsx_ext = std::path::Path::new(&xlsx_wb.external_workbooks[0].path)
+            .file_name()
+            .unwrap();
+        assert_eq!(ods_ext, xlsx_ext, "External workbook basename should match");
 
-        for wb_xlsx in &workbooks_xlsx {
-            assert!(
-                ods_basenames.contains(&wb_xlsx.path.as_str()),
-                "XLSX workbook '{}' should be present in ODS basenames",
-                wb_xlsx.path
-            );
-        }
+        // 3. Sheet7!J6 in ODS contain `[1]`
+        // Sheet7 is at index 5 (0-indexed) based on `examples/list_sheets.rs` output
+        let sheet_idx = 5;
+        let row = 5; // J6 -> row 6 -> 0-indexed 5
+        let col = 9; // J -> 10th col -> 0-indexed 9
+
+        // Helper to get formula
+        let get_formula = |wb: &Workbook, sheet_idx: usize, row: u32, col: u32| {
+            wb.sheets
+                .get(sheet_idx)
+                .and_then(|s| s.cells.get(&(row, col)))
+                .and_then(|c| {
+                    if let CellValue::Formula { ref formula, .. } = c.value {
+                        Some(formula.clone())
+                    } else {
+                        None
+                    }
+                })
+        };
+
+        let ods_formula =
+            get_formula(&ods_wb, sheet_idx, row, col).expect("ODS Sheet7!J6 should have a formula");
+
+        assert!(
+            ods_formula.contains("[1]"),
+            "ODS formula at Sheet7!J6 should contain '[1]', found: {}",
+            ods_formula
+        );
+
+        // 4. ODS formula = XLSX formula in Sheet7!J6
+        let xlsx_formula = get_formula(&xlsx_wb, sheet_idx, row, col)
+            .expect("XLSX Sheet7!J6 should have a formula");
+
+        assert_eq!(
+            ods_formula, xlsx_formula,
+            "Formulas at Sheet7!J6 should match exactly"
+        );
     }
 }

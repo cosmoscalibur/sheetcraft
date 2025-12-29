@@ -57,56 +57,6 @@ pub fn has_macros(archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>) 
     Ok(false)
 }
 
-/// Extract external links from ODS metadata
-/// Normalize ODS external workbook references to XLSX index format
-/// Converts ['file:///path/to/file.xlsx'#Sheet1.A1] -> [1]Sheet1!A1
-///
-/// # Arguments
-/// * `formula` - The ODS formula string
-/// * `external_workbooks` - List of external workbooks with their indices
-///
-/// # Returns
-/// Normalized formula with XLSX-style external references
-pub fn normalize_ods_external_refs(
-    formula: &str,
-    external_workbooks: &[super::ExternalWorkbook],
-) -> String {
-    let mut result = formula.to_string();
-
-    // Build mapping from path to index
-    for wb in external_workbooks {
-        // ODS patterns to match (wb.path is basename):
-        // ['file:///absolute/path/basename.xlsx'#Sheet.Cell]
-        // ['../relative/path/basename.xlsx'#Sheet.Cell]
-        // We need to match any path ending with the basename
-
-        // XLSX format: [index] where index is 1-based
-        let xlsx_ref = format!("[{}]", wb.index + 1);
-
-        // Use regex to match paths ending with the basename
-        use regex::Regex;
-        let pattern_str = format!(r"\['[^']*{}'#", regex::escape(&wb.path));
-        if let Ok(re) = Regex::new(&pattern_str) {
-            result = re
-                .replace_all(&result, &format!("{}#", xlsx_ref))
-                .to_string();
-        }
-    }
-
-    // Convert ODS cell reference separator (.) to XLSX (!)
-    // Pattern: after ] and before cell reference
-    // Use regex to be more precise
-    use regex::Regex;
-    use std::sync::OnceLock;
-
-    static EXTERNAL_REF_PATTERN: OnceLock<Regex> = OnceLock::new();
-    let re = EXTERNAL_REF_PATTERN.get_or_init(|| Regex::new(r"\[(\d+)\]([^!]+)\.").unwrap());
-
-    result = re.replace_all(&result, "[$1]$2!").to_string();
-
-    result
-}
-
 /// Extract cached error values from an ODS worksheet
 /// ODS error values are often stored in calcext:value-type="error" and calcext:value="#ERROR!"
 fn parse_ods_date(date_str: &str) -> Option<f64> {
@@ -218,6 +168,7 @@ pub fn normalize_ods_reference(
     reference: &str,
     preserve_sheet: bool,
     current_sheet_name: Option<&str>,
+    external_workbooks: &mut Vec<ExternalWorkbook>,
 ) -> String {
     // Strip "of:=" prefix if present
     let input = reference.strip_prefix("of:=").unwrap_or(reference);
@@ -228,14 +179,29 @@ pub fn normalize_ods_reference(
     while let Some(ch) = chars.next() {
         match ch {
             '[' => {
-                // Handle bracketed references: [.A1], [$Sheet.A1], [.A1:.B2]
-                parse_bracket_ref(&mut chars, &mut result, preserve_sheet);
+                // Handle bracketed references: [.A1], [$Sheet.A1], [.A1:.B2], ['file:///path'#Sheet.A1]
+                parse_bracket_ref(
+                    &mut chars,
+                    &mut result,
+                    preserve_sheet,
+                    current_sheet_name,
+                    external_workbooks,
+                );
             }
             '$' => {
                 // Handle $Sheet.A1 or $Sheet.A1:.$B$2 (unbracketed sheet reference)
                 if let Some(next) = chars.peek() {
                     if next.is_alphabetic() {
-                        parse_dollar_sheet_ref(&mut chars, &mut result, preserve_sheet);
+                        parse_dollar_sheet_ref(
+                            &mut chars,
+                            &mut result,
+                            preserve_sheet,
+                            if preserve_sheet {
+                                None
+                            } else {
+                                current_sheet_name
+                            },
+                        );
                     } else {
                         result.push(ch);
                     }
@@ -262,13 +228,6 @@ pub fn normalize_ods_reference(
         return start.to_string();
     }
 
-    // YOLO STRATEGY: Strip current sheet name at the very end
-    // If preserve_sheet=false and we know the current sheet, replace "CurrentSheet!" with ""
-    if !preserve_sheet && let Some(current_sheet) = current_sheet_name {
-        let sheet_prefix = format!("{}!", current_sheet);
-        result = result.replace(&sheet_prefix, "");
-    }
-
     result
 }
 
@@ -282,7 +241,9 @@ fn is_whole_column_or_row(s: &str) -> bool {
 fn parse_bracket_ref(
     chars: &mut std::iter::Peekable<std::str::Chars>,
     result: &mut String,
-    preserve_sheet: bool,
+    _preserve_sheet: bool,
+    current_sheet_name: Option<&str>,
+    external_workbooks: &mut Vec<ExternalWorkbook>,
 ) {
     let mut bracket_content = String::new();
     let mut depth = 1;
@@ -304,9 +265,44 @@ fn parse_bracket_ref(
     }
 
     // Parse the bracket content
-    if let Some(stripped) = bracket_content.strip_prefix('$') {
+    if let Some(hash_pos) = bracket_content.find('#') {
+        // External reference: ['file:///path'#Sheet.A1]
+        let mut uri = &bracket_content[..hash_pos];
+        let ref_part = &bracket_content[hash_pos + 1..];
+
+        // Strip quotes if present
+        if uri.starts_with('\'') && uri.ends_with('\'') && uri.len() > 2 {
+            uri = &uri[1..uri.len() - 1];
+        }
+
+        // Extract basename
+        let path = std::path::Path::new(uri);
+        let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(uri);
+
+        // Find or add to external_workbooks
+        let index = if let Some(pos) = external_workbooks.iter().position(|eb| eb.path == basename)
+        {
+            pos
+        } else {
+            let new_idx = external_workbooks.len();
+            external_workbooks.push(ExternalWorkbook {
+                index: new_idx,
+                path: basename.to_string(),
+            });
+            new_idx
+        };
+
+        // Parse the reference part using the existing Sheet.Cell logic
+        // For external references, we NEVER strip the sheet name, so pass None as current_sheet_name
+        let mut normalized_ref = String::new();
+        parse_sheet_qualified_ref(ref_part, &mut normalized_ref, None);
+
+        // Build XLSX format: [index]Sheet!Cell
+        result.push_str(&format!("[{}]", index + 1));
+        result.push_str(&normalized_ref);
+    } else if let Some(stripped) = bracket_content.strip_prefix('$') {
         // [$Sheet.A1] or [$Sheet.A1:.B2]
-        parse_sheet_qualified_ref(stripped, result, preserve_sheet);
+        parse_sheet_qualified_ref(stripped, result, current_sheet_name);
     } else if let Some(stripped) = bracket_content.strip_prefix('.') {
         // [.A1] or [.A1:.B2] or [.A:.A] or [.1:.1]
         parse_local_ref(stripped, result);
@@ -318,34 +314,84 @@ fn parse_bracket_ref(
     }
 }
 
-/// Parse sheet-qualified reference: Sheet.A1 or Sheet.A1:.B2
-/// Always outputs Sheet!Cell format, stripping handled at end of normalize_ods_reference
-fn parse_sheet_qualified_ref(content: &str, result: &mut String, _preserve_sheet: bool) {
+/// Parse Sheet.A1:Sheet.B2 or Sheet.A1
+fn parse_sheet_qualified_ref(content: &str, result: &mut String, current_sheet_name: Option<&str>) {
     if let Some(colon_pos) = content.find(':') {
-        // Range: Sheet.A1:.B2
+        // Range: Sheet.A1:Sheet.B2 or Sheet.A1:.B2
         let start_part = &content[..colon_pos];
         let end_part = &content[colon_pos + 1..];
 
-        if let Some((sheet, cell)) = start_part.split_once('.') {
-            let end_cell = end_part.strip_prefix('.').unwrap_or(end_part);
+        let mut start_sheet = "";
+        let mut start_cell = start_part;
+        if let Some((s, c)) = start_part.split_once('.') {
+            start_sheet = s;
+            start_cell = c;
+        }
 
-            // Always output Sheet!Cell format
-            result.push_str(sheet);
-            result.push('!');
-            result.push_str(cell);
-            result.push(':');
-            result.push_str(end_cell);
+        let mut end_sheet = "";
+        let mut end_cell = end_part;
+
+        // ODS shortcut: Sheet1.A1:.B2
+        if end_part.starts_with('.') {
+            end_sheet = start_sheet;
+            end_cell = &end_part[1..];
+        } else if let Some((s, c)) = end_part.split_once('.') {
+            end_sheet = s;
+            end_cell = c;
+        }
+
+        if !start_sheet.is_empty() {
+            // Check if we should strip the sheet name
+            // For a range, we only strip if BOTH sheets match the current sheet
+            let should_strip = if let Some(current) = current_sheet_name {
+                start_sheet == current && (end_sheet == current || end_sheet.is_empty())
+            } else {
+                false
+            };
+
+            if should_strip {
+                result.push_str(start_cell);
+                result.push(':');
+                result.push_str(end_cell);
+            } else {
+                result.push_str(start_sheet.trim_start_matches('$'));
+                result.push('!');
+                result.push_str(start_cell);
+                result.push(':');
+                if !end_sheet.is_empty() && end_sheet != start_sheet {
+                    result.push_str(end_sheet.trim_start_matches('$'));
+                    result.push('!');
+                }
+                result.push_str(end_cell);
+            }
         } else {
-            // Malformed, keep as-is
+            // Malformed or just local range like .A1:.B2 (though those should go to parse_local_ref)
             result.push_str(content);
         }
     } else {
         // Single cell: Sheet.A1
-        if let Some((sheet, cell)) = content.split_once('.') {
-            // Always output Sheet!Cell format
-            result.push_str(sheet);
-            result.push('!');
-            result.push_str(cell);
+        let mut sheet = "";
+        let mut cell = content;
+        if let Some((s, c)) = content.split_once('.') {
+            sheet = s;
+            cell = c;
+        }
+
+        if !sheet.is_empty() {
+            // Check if we should strip the sheet name
+            let should_strip = if let Some(current) = current_sheet_name {
+                sheet == current
+            } else {
+                false
+            };
+
+            if should_strip {
+                result.push_str(cell);
+            } else {
+                result.push_str(sheet.trim_start_matches('$'));
+                result.push('!');
+                result.push_str(cell);
+            }
         } else {
             // Malformed, keep as-is
             result.push_str(content);
@@ -376,6 +422,7 @@ fn parse_dollar_sheet_ref(
     chars: &mut std::iter::Peekable<std::str::Chars>,
     result: &mut String,
     _preserve_sheet: bool,
+    current_sheet_name: Option<&str>,
 ) {
     let mut sheet_name = String::new();
 
@@ -414,6 +461,7 @@ fn parse_dollar_sheet_ref(
     }
 
     // Check if there's a range (colon)
+    let mut cell_ref2 = String::new();
     if chars.peek() == Some(&':') {
         chars.next(); // consume ':'
 
@@ -423,7 +471,6 @@ fn parse_dollar_sheet_ref(
         }
 
         // Collect second cell reference
-        let mut cell_ref2 = String::new();
         while let Some(&ch) = chars.peek() {
             if ch == '$' || ch.is_alphabetic() || ch.is_numeric() {
                 cell_ref2.push(ch);
@@ -432,18 +479,31 @@ fn parse_dollar_sheet_ref(
                 break;
             }
         }
+    }
 
-        // Always output Sheet!Cell format for ranges
-        result.push_str(&sheet_name);
-        result.push('!');
+    // Check if we should strip the sheet name
+    let should_strip = if let Some(current) = current_sheet_name {
+        sheet_name == current
+    } else {
+        false
+    };
+
+    if cell_ref2.is_empty() {
+        // Single cell
+        if !should_strip {
+            result.push_str(&sheet_name);
+            result.push('!');
+        }
+        result.push_str(&cell_ref);
+    } else {
+        // Range
+        if !should_strip {
+            result.push_str(&sheet_name);
+            result.push('!');
+        }
         result.push_str(&cell_ref);
         result.push(':');
         result.push_str(&cell_ref2);
-    } else {
-        // Always output Sheet!Cell format for single cells
-        result.push_str(&sheet_name);
-        result.push('!');
-        result.push_str(&cell_ref);
     }
 }
 
@@ -1081,18 +1141,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         // Check if this table-source has an xlink:href attribute
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"xlink:href" {
-                                let href = attr.unescape_value()?.to_string();
-                                // Extract workbook path and add to external_workbooks
-                                if let Some(path) = href.strip_prefix("../")
-                                    && !external_workbooks
-                                        .iter()
-                                        .any(|wb: &ExternalWorkbook| wb.path == path)
-                                {
-                                    external_workbooks.push(ExternalWorkbook {
-                                        index: external_workbooks.len(),
-                                        path: path.to_string(),
-                                    });
-                                }
+                                let _href = attr.unescape_value()?.to_string();
                                 // This sheet is from an external workbook, mark it to be skipped
                                 skip_current_sheet = true;
                                 // Fast-forward to the end of this table to avoid parsing millions of rows
@@ -1302,12 +1351,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                             &raw_formula,
                                             false,
                                             Some(&sheet.name),
+                                            &mut external_workbooks,
                                         );
                                         // Apply external workbook normalization
-                                        formula = Some(normalize_ods_external_refs(
-                                            &normalized,
-                                            &external_workbooks,
-                                        ));
+                                        formula = Some(normalized);
                                     }
                                     b"table:style-name" => {
                                         style_name = attr.unescape_value()?.to_string();
@@ -1499,6 +1546,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                             &raw_formula,
                                             false,
                                             Some(&sheet.name),
+                                            &mut external_workbooks,
                                         ));
                                     }
                                     b"table:style-name" => {
@@ -1577,7 +1625,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             if let Some(ref range) = current_cf_range {
                                 sheet
                                     .conditional_formatting_ranges
-                                    .push(normalize_ods_reference(range, false, None));
+                                    .push(normalize_ods_reference(
+                                        range,
+                                        false,
+                                        Some(&sheet.name),
+                                        &mut external_workbooks,
+                                    ));
                             }
                         }
                     }
@@ -1600,7 +1653,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             if let Some(ref range) = current_cf_range {
                                 sheet
                                     .conditional_formatting_ranges
-                                    .push(normalize_ods_reference(range, false, None));
+                                    .push(normalize_ods_reference(
+                                        range,
+                                        false,
+                                        Some(&sheet.name),
+                                        &mut external_workbooks,
+                                    ));
                             }
                         }
                     }
@@ -1610,7 +1668,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             if let Some(ref range) = current_cf_range {
                                 sheet
                                     .conditional_formatting_ranges
-                                    .push(normalize_ods_reference(range, false, None));
+                                    .push(normalize_ods_reference(
+                                        range,
+                                        false,
+                                        Some(&sheet.name),
+                                        &mut external_workbooks,
+                                    ));
                             }
                         }
                     }
@@ -1718,6 +1781,11 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
     fn read_defined_names(&mut self) -> Result<HashMap<String, String>> {
         let mut defined_names = HashMap::new();
 
+        // Ensure data is parsed to have access to external_workbooks
+        if self.data.is_none() {
+            self.read_sheets()?;
+        }
+
         let content_xml = match self.archive.by_name("content.xml") {
             Ok(file) => file,
             Err(_) => return Ok(defined_names),
@@ -1757,8 +1825,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         }
 
                         if !name.is_empty() && !cell_range_address.is_empty() {
-                            let normalized =
-                                normalize_ods_reference(&cell_range_address, true, None);
+                            let normalized = normalize_ods_reference(
+                                &cell_range_address,
+                                true,
+                                None,
+                                &mut self.data.as_mut().unwrap().external_workbooks,
+                            );
                             defined_names.insert(name, normalized);
                         }
                     } else if in_database_ranges && e.name().as_ref() == b"table:database-range" {
@@ -1780,8 +1852,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         if !name.is_empty() && !target_range_address.is_empty() {
                             // Filter out internal ODS names that start with __Anonymous_Sheet_DB__
                             if !name.starts_with("__Anonymous_Sheet_DB__") {
-                                let normalized =
-                                    normalize_ods_reference(&target_range_address, true, None);
+                                let normalized = normalize_ods_reference(
+                                    &target_range_address,
+                                    true,
+                                    None,
+                                    &mut self.data.as_mut().unwrap().external_workbooks,
+                                );
                                 defined_names.insert(name, normalized);
                             }
                         }
@@ -1873,19 +1949,19 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_basic() {
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.A1:.B2])", false, None),
+            normalize_ods_reference("of:=SUM([.A1:.B2])", false, None, &mut Vec::new()),
             "SUM(A1:B2)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=[.A1]+[.B1]", false, None),
+            normalize_ods_reference("of:=[.A1]+[.B1]", false, None, &mut Vec::new()),
             "A1+B1"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.A:.A])", false, None),
+            normalize_ods_reference("of:=SUM([.A:.A])", false, None, &mut Vec::new()),
             "SUM(A:A)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([.1:.1])", false, None),
+            normalize_ods_reference("of:=SUM([.1:.1])", false, None, &mut Vec::new()),
             "SUM(1:1)"
         );
     }
@@ -1893,15 +1969,15 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_sheet() {
         assert_eq!(
-            normalize_ods_reference("of:=[$Sheet1.A1]*2", false, None),
+            normalize_ods_reference("of:=[$Sheet1.A1]*2", false, None, &mut Vec::new()),
             "Sheet1!A1*2"
         );
         assert_eq!(
-            normalize_ods_reference("of:=SUM([$Sheet1.A1:.B2])", false, None),
+            normalize_ods_reference("of:=SUM([$Sheet1.A1:.B2])", false, None, &mut Vec::new()),
             "SUM(Sheet1!A1:B2)"
         );
         assert_eq!(
-            normalize_ods_reference("of:=$Sheet1.$A$1+$Sheet1.B1", false, None),
+            normalize_ods_reference("of:=$Sheet1.$A$1+$Sheet1.B1", false, None, &mut Vec::new()),
             "Sheet1!$A$1+Sheet1!B1"
         );
     }
@@ -1909,11 +1985,11 @@ mod tests {
     #[test]
     fn test_normalize_ods_reference_mixed() {
         assert_eq!(
-            normalize_ods_reference("of:=[.A1:.$B$2]", false, None),
+            normalize_ods_reference("of:=[.A1:.$B$2]", false, None, &mut Vec::new()),
             "A1:$B$2"
         );
         assert_eq!(
-            normalize_ods_reference("of:=[.A$1]+$Sheet1.B$2", false, None),
+            normalize_ods_reference("of:=[.A$1]+$Sheet1.B$2", false, None, &mut Vec::new()),
             "A$1+Sheet1!B$2"
         );
     }
@@ -1922,18 +1998,24 @@ mod tests {
     fn test_normalize_ods_range() {
         // Local range with redundant sheet names
         assert_eq!(
-            normalize_ods_reference("Sheet1.B2:Sheet1.B4", false, None),
+            normalize_ods_reference("Sheet1.B2:Sheet1.B4", false, None, &mut Vec::new()),
             "B2:B4"
         );
         // Single cell ref
-        assert_eq!(normalize_ods_reference("Sheet1.A1", false, None), "A1");
+        assert_eq!(
+            normalize_ods_reference("Sheet1.A1", false, None, &mut Vec::new()),
+            "A1"
+        );
         // Multi-sheet range
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet2.B2", false, None),
+            normalize_ods_reference("Sheet1.A1:Sheet2.B2", false, None, &mut Vec::new()),
             "Sheet1!A1:Sheet2!B2"
         );
         // Absolute local ref
-        assert_eq!(normalize_ods_reference("Sheet1.$A$1", false, None), "$A$1");
+        assert_eq!(
+            normalize_ods_reference("Sheet1.$A$1", false, None, &mut Vec::new()),
+            "$A$1"
+        );
     }
     #[test]
     fn test_normalize_ods_unbracketed_range() {
@@ -1945,7 +2027,7 @@ mod tests {
         // With preserve=true (defined names), we want the full sheet qualification
         let expected_true = "Listas!$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, true, Some("Listas")),
+            normalize_ods_reference(raw, true, Some("Listas"), &mut Vec::new()),
             expected_true,
             "Failed with preserve=true"
         );
@@ -1954,7 +2036,7 @@ mod tests {
         // to avoid false circular references (ERR003 treat explicit self-sheet as non-trivial)
         let expected_false = "$D$19:$M$19";
         assert_eq!(
-            normalize_ods_reference(raw, false, Some("Listas")),
+            normalize_ods_reference(raw, false, Some("Listas"), &mut Vec::new()),
             expected_false,
             "Failed with preserve=false"
         );
@@ -1967,14 +2049,14 @@ mod tests {
         let raw = "$Sheet1.A1:.$B2";
         // With preserve=false, should strip the sheet name since it's the current sheet
         assert_eq!(
-            normalize_ods_reference(raw, false, Some("Sheet1")),
+            normalize_ods_reference(raw, false, Some("Sheet1"), &mut Vec::new()),
             "A1:$B2"
         );
 
         // Also check bracketed case: [$Sheet.A1:.$B2]
         let raw_bracket = "[$Sheet1.A1:.$B2]";
         assert_eq!(
-            normalize_ods_reference(raw_bracket, false, Some("Sheet1")),
+            normalize_ods_reference(raw_bracket, false, Some("Sheet1"), &mut Vec::new()),
             "A1:$B2"
         );
     }
@@ -1983,19 +2065,19 @@ mod tests {
     fn test_normalize_ods_preserve_sheet() {
         // Should preserve sheet name even if it looks local
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1", true, None),
+            normalize_ods_reference("Sheet1.A1", true, None, &mut Vec::new()),
             "Sheet1.A1"
         );
         // Should preserve absolute local ref
         assert_eq!(
-            normalize_ods_reference("Sheet1.$G$2", true, None),
+            normalize_ods_reference("Sheet1.$G$2", true, None, &mut Vec::new()),
             "Sheet1.$G$2"
         );
         // Normal ranges should still be processed if they don't match the strip pattern
         // But our strip pattern in 0c matches: ([^.]+)\.([A-Z0-9$]+):([^.]+)\.([A-Z0-9$]+)
         // If preserve=true, this pattern is skipped.
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet1.B2", true, None),
+            normalize_ods_reference("Sheet1.A1:Sheet1.B2", true, None, &mut Vec::new()),
             "Sheet1.A1:Sheet1.B2"
         );
     }
@@ -2004,11 +2086,37 @@ mod tests {
     fn test_normalize_ods_reference_single_cell_range() {
         // PERF004 regression: "Sheet1.A1:Sheet1.A1" should normalize to "A1"
         assert_eq!(
-            normalize_ods_reference("Sheet1.A1:Sheet1.A1", false, None),
+            normalize_ods_reference("Sheet1.A1:Sheet1.A1", false, None, &mut Vec::new()),
             "A1"
         );
-        assert_eq!(normalize_ods_reference("A1:A1", false, None), "A1");
-        assert_eq!(normalize_ods_reference("[.A1:.A1]", false, None), "A1");
+        assert_eq!(
+            normalize_ods_reference("A1:A1", false, None, &mut Vec::new()),
+            "A1"
+        );
+        assert_eq!(
+            normalize_ods_reference("[.A1:.A1]", false, None, &mut Vec::new()),
+            "A1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_ods_external_reference_inline() {
+        let mut external_workbooks = Vec::new();
+        let raw = "of:=['file:///path/test.xlsx'#Sheet1.A1]";
+        let normalized =
+            normalize_ods_reference(raw, false, Some("Sheet1"), &mut external_workbooks);
+
+        assert_eq!(normalized, "[1]Sheet1!A1");
+        assert_eq!(external_workbooks.len(), 1);
+        assert_eq!(external_workbooks[0].path, "test.xlsx");
+        assert_eq!(external_workbooks[0].index, 0);
+
+        // Test second reference to same workbook
+        let raw2 = "of:=['file:///other/test.xlsx'#Sheet2.B2]";
+        let normalized2 =
+            normalize_ods_reference(raw2, false, Some("Sheet1"), &mut external_workbooks);
+        assert_eq!(normalized2, "[1]Sheet2!B2");
+        assert_eq!(external_workbooks.len(), 1);
     }
 
     #[test]
