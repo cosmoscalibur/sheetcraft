@@ -88,12 +88,10 @@ impl LinterRule for InconsistentDateFormatRule {
                 // Only date cells are relevant.
                 // In Excel, dates are numbers. In ODS, they might be stored as text (ISO strings) with a style.
                 // Formulas can also result in dates.
-                let is_candidate = match cell.value {
-                    CellValue::Number(_) => true,
-                    CellValue::Text(_) => true,
-                    CellValue::Formula { .. } => true,
-                    _ => false,
-                };
+                let is_candidate = matches!(
+                    cell.value,
+                    CellValue::Number(_) | CellValue::Text(_) | CellValue::Formula { .. }
+                );
 
                 if is_candidate && let Some(fmt) = &cell.num_fmt {
                     // Normalize format: remove escape backslashes common in XLSX (e.g. "mm\-dd\-yyyy" -> "mm-dd-yyyy")

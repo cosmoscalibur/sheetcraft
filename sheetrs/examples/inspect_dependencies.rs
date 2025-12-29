@@ -16,7 +16,7 @@ fn extract_cell_references(
         let mut sheet_name = current_sheet.to_string();
 
         // Group 1: Outer sheet name wrapper
-        if let Some(_) = cap.get(1) {
+        if cap.get(1).is_some() {
             if let Some(quoted) = cap.get(2) {
                 sheet_name = quoted.as_str().to_string();
             } else if let Some(unquoted) = cap.get(3) {

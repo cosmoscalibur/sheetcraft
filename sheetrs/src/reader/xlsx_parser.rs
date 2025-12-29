@@ -215,10 +215,8 @@ pub fn extract_tables_from_xlsx(
                                 b"name" | b"displayName" => {
                                     // displayName is usually the safe name, name might be id.
                                     // Spec says: name is collection name, displayName is unique name for formulas.
-                                    // DisplayName is prioritized.
-                                    if name.is_empty() {
-                                        name = attr.unescape_value()?.to_string();
-                                    } else if attr.key.as_ref() == b"displayName" {
+                                    // DisplayName is prioritized, but if name is empty, use either.
+                                    if name.is_empty() || attr.key.as_ref() == b"displayName" {
                                         name = attr.unescape_value()?.to_string();
                                     }
                                 }
@@ -577,6 +575,20 @@ fn translate_shared_formula(formula: &str, row_shift: i32, col_shift: i32) -> St
     })
 }
 
+// Type alias to avoid clippy::type_complexity warning
+type ParsedSheetData = (
+    HashMap<(u32, u32), Cell>,
+    Vec<u32>,
+    Vec<u32>,
+    Vec<(u32, u32, u32, u32)>,
+    usize,
+    Vec<String>,
+    Option<(u32, u32)>,
+);
+
+// Type alias to avoid clippy::type_complexity warning
+type SharedFormulaMap = HashMap<u32, Vec<(String, u32, u32, Option<(u32, u32, u32, u32)>)>>;
+
 impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
     fn get_sheet_names(&mut self) -> Result<Vec<String>> {
         let mut names = Vec::new();
@@ -604,18 +616,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
         Ok(names)
     }
 
-    fn parse_sheet_xml(
-        &mut self,
-        path: &str,
-    ) -> Result<(
-        HashMap<(u32, u32), Cell>,
-        Vec<u32>,
-        Vec<u32>,
-        Vec<(u32, u32, u32, u32)>,
-        usize,
-        Vec<String>,
-        Option<(u32, u32)>,
-    )> {
+    fn parse_sheet_xml(&mut self, path: &str) -> Result<ParsedSheetData> {
         let mut cells = HashMap::new();
         let mut hidden_columns = Vec::new();
         let mut hidden_rows = Vec::new();
@@ -623,10 +624,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
         let mut cf_count = 0;
         let mut cf_ranges = Vec::new();
         let mut dim_range = None;
-        let mut shared_formulas: HashMap<
-            u32,
-            Vec<(String, u32, u32, Option<(u32, u32, u32, u32)>)>,
-        > = HashMap::new();
+        let mut shared_formulas: SharedFormulaMap = HashMap::new();
 
         let sheet_xml = self.archive.by_name(path)?;
         let mut reader = Reader::from_reader(BufReader::new(sheet_xml));
@@ -961,13 +959,16 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
     }
 }
 
+// Type alias to avoid clippy::type_complexity warning
+type ParsedCellData = (CellValue, Option<String>, Option<u32>, Option<String>);
+
 fn parse_cell_contents<R: std::io::BufRead>(
     reader: &mut Reader<R>,
     t_attr: &str,
     shared_strings: &[String],
     _styles: &[String],
     num_fmt: Option<&str>,
-) -> Result<(CellValue, Option<String>, Option<u32>, Option<String>)> {
+) -> Result<ParsedCellData> {
     let mut value = CellValue::Empty;
     let mut formula = None;
     let mut shared_si = None;
@@ -1281,25 +1282,23 @@ pub fn extract_hidden_columns_rows_from_xlsx(
                         let mut max_col = 0u32;
                         let mut hidden = false;
 
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"min" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            min_col = val.saturating_sub(1); // Convert to 0-based
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"min" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        min_col = val.saturating_sub(1); // Convert to 0-based
                                     }
-                                    b"max" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            max_col = val.saturating_sub(1); // Convert to 0-based
-                                        }
-                                    }
-                                    b"hidden" => {
-                                        hidden = attr.unescape_value()? == "1"
-                                            || attr.unescape_value()?.to_lowercase() == "true";
-                                    }
-                                    _ => {}
                                 }
+                                b"max" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        max_col = val.saturating_sub(1); // Convert to 0-based
+                                    }
+                                }
+                                b"hidden" => {
+                                    hidden = attr.unescape_value()? == "1"
+                                        || attr.unescape_value()?.to_lowercase() == "true";
+                                }
+                                _ => {}
                             }
                         }
 
@@ -1314,20 +1313,18 @@ pub fn extract_hidden_columns_rows_from_xlsx(
                         let mut row_num = 0u32;
                         let mut hidden = false;
 
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"r" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            row_num = val.saturating_sub(1); // Convert to 0-based
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"r" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        row_num = val.saturating_sub(1); // Convert to 0-based
                                     }
-                                    b"hidden" => {
-                                        hidden = attr.unescape_value()? == "1"
-                                            || attr.unescape_value()?.to_lowercase() == "true";
-                                    }
-                                    _ => {}
                                 }
+                                b"hidden" => {
+                                    hidden = attr.unescape_value()? == "1"
+                                        || attr.unescape_value()?.to_lowercase() == "true";
+                                }
+                                _ => {}
                             }
                         }
 
@@ -1947,7 +1944,7 @@ fn test_sheet_collection_xlsx() {
     let sheets = reader.read_sheets().unwrap();
 
     // Verify sheet count (should not include external sheets)
-    assert!(sheets.len() > 0, "Should have at least one sheet");
+    assert!(!sheets.is_empty(), "Should have at least one sheet");
 
     // Verify no external sheet references in names
     for sheet in &sheets {
