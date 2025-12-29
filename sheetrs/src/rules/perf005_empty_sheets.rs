@@ -144,14 +144,7 @@ mod tests {
             name: "Main".to_string(),
             cells: cells1,
             used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
+            ..Default::default()
         };
 
         // Filled but unused sheet (Should be PERF002, NOT PERF005)
@@ -169,14 +162,7 @@ mod tests {
             name: "UnusedData".to_string(),
             cells: cells2,
             used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
+            ..Default::default()
         };
 
         // Empty unused sheet (Should be PERF005)
@@ -219,28 +205,14 @@ mod tests {
             name: "Main".to_string(),
             cells: cells1,
             used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
+            ..Default::default()
         };
 
         let sheet2 = Sheet {
             name: "HiddenEmpty".to_string(),
             cells: HashMap::new(), // Empty
             used_range: None,
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
+            ..Default::default()
         };
 
         let mut defined_names = HashMap::new();
@@ -259,8 +231,7 @@ mod tests {
             sheets: vec![sheet1, sheet2],
             defined_names,
             hidden_sheets: vec!["HiddenEmpty".to_string()],
-            has_macros: false,
-            external_workbooks: Vec::new(),
+            ..Default::default()
         };
 
         let rule = EmptySheetsRule;
