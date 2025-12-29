@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SheetRS WASM Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <h1>SheetRS 📊</h1>
+        <div id="tool-selector">
+            <button class="tool-btn active" data-tool="lint">Lint</button>
+            <button class="tool-btn" data-tool="stats">Stats</button>
+            <button class="tool-btn" data-tool="transform" disabled title="Under Construction">Transform 🚧</button>
+        </div>
+    </header>
+    <main>
+        <div id="sidebar">
+            <div id="setup-area">
+                <div id="lint-setup" class="setup-panel">
+                    <h3>Linter Setup</h3>
+                    <div id="rules-accordion">
+                        <!-- Categories and rules will be injected here -->
+                        <div class="loading">Loading rules...</div>
+                    </div>
+                </div>
+                <div id="stats-setup" class="setup-panel" style="display: none;">
+                    <h3>Stats Setup</h3>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="stat-sheets" checked> Sheet Information</label>
+                        <label><input type="checkbox" id="stat-ranges" checked> Named Ranges</label>
+                        <label><input type="checkbox" id="stat-macros" checked> Macro Check</label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="execution-area">
+                <div id="file-zone">
+                    <p>Drag & Drop or Click to Select</p>
+                    <input type="file" id="file-input" style="display: none;" accept=".xlsx,.xlsm,.ods">
+                </div>
+                <div id="file-info" style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">No file selected</div>
+                <button id="play-btn" disabled>▶ Run Tool</button>
+            </div>
+        </div>
+
+        <div id="content">
+            <div id="output-header">
+                <h3>Results</h3>
+                <div class="actions">
+                    <button class="action-btn" id="copy-btn">Copy</button>
+                    <button class="action-btn" id="download-btn">Download JSON</button>
+                    <button class="action-btn" id="clear-btn">Clear</button>
+                </div>
+            </div>
+            <div id="output">Welcome to SheetRS WASM Demo.
+                1. Select a tool and configure it.
+                2. Upload a spreadsheet.
+                3. Press Play!</div>
+
+            <div class="status-bar" id="status">Ready</div>
+        </div>
+    </main>
+
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

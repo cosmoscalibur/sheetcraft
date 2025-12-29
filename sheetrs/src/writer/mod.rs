@@ -6,6 +6,7 @@ pub use xlsx_writer::{WorkbookModifications, modify_workbook_xlsx};
 
 use anyhow::Result;
 
+use std::fs::File;
 use std::path::Path;
 
 /// Modify a workbook file (supports multiple operations)
@@ -15,10 +16,14 @@ pub fn modify_workbook<P: AsRef<Path>>(
     modifications: &WorkbookModifications,
 ) -> Result<()> {
     let input = input_path.as_ref();
+    let output = output_path.as_ref();
+
+    let input_file = File::open(input)?;
+    let output_file = File::create(output)?;
 
     // Determine file type by extension
     match input.extension().and_then(|s| s.to_str()) {
-        Some("xlsx") => modify_workbook_xlsx(input, output_path.as_ref(), modifications),
+        Some("xlsx") => modify_workbook_xlsx(input_file, output_file, modifications),
         Some("ods") => {
             anyhow::bail!("ODS format not yet supported for modification")
         }

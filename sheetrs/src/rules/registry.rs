@@ -68,7 +68,7 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 /// Create instances of all available rules
 ///
 /// Instantiates every available rule, passing configuration where necessary.
-fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
+pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     vec![
         Box::new(err001_error_cells::ErrorCellsRule),
         Box::new(err002_broken_named_ranges::BrokenNamedRangesRule),
