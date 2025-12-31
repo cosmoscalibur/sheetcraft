@@ -13,7 +13,6 @@ disabled_rules = []
 max_extra_row = 1
 max_extra_column = 1
 max_conditional_formatting = 0
-external_workbook_scope = "SHEET"
 url_timeout_seconds = 2
 max_sheets = 5
 max_formula_length = 255
@@ -21,8 +20,6 @@ max_text_length = 255
 avoid_sheet_names = ["sheet", "copy"]
 date_format = "mm-dd-yyyy"
 expand_ranges_in_dependencies = false
-# Volatile functions to detect (FORM002)
-volatile_functions = ["NOW", "TODAY", "RAND", "RANDBETWEEN", "OFFSET", "INDIRECT"]
 # Formula nesting limits
 max_formula_nesting = 2
 max_if_nesting = 2
@@ -31,7 +28,7 @@ max_blank_row = 1
 max_blank_column = 1
 
 # FORM008: Hardcoded values config
-ignore_hardcoded_num_values = ["0.1"]
+ignore_hardcoded_num_values = []
 ignore_hardcoded_int_values = false
 ignore_hardcoded_power_of_ten = false
 

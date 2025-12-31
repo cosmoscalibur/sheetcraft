@@ -47,11 +47,11 @@ disabled_rules = ["UX", "SM"]
 
 | ID | Description | Default Active | Params |
 |----|-------------|----------------|--------|
-| **SEC001** | External workbook references | Yes | `external_workbook_scope` (string: "BOOK"\|"SHEET", default: "BOOK") |
+| **SEC001** | External workbook references | Yes | None |
 | **SEC002** | Hidden sheets | No | None |
 | **SEC003** | Hidden columns or rows | No | None |
 | **SEC004** | Macros and scripts detection (VBA, ODS Basic/Scripts) | No | None |
-| **SEC005** | Web URL links in cell values | No | `url_links_scope` (string: "BOOK"\|"SHEET", default: "BOOK"), `url_links_status` (string: "INVALID"\|"ALL", default: "ALL"), `url_timeout_seconds` (int, default: 5) |
+| **SEC005** | Web URL links in cell values | No | `url_links_status` (string: "INVALID"\|"ALL", default: "ALL"), `url_timeout_seconds` (int, default: 5) |
 
 ### Performance Rules (PERF)
 

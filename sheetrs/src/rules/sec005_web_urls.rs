@@ -7,22 +7,6 @@ use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkScope {
-    Book,  // Only report book-level violations
-    Sheet, // Only report sheet-level violations
-}
-
-impl LinkScope {
-    fn from_str(s: &str) -> Self {
-        match s.to_uppercase().as_str() {
-            "BOOK" => LinkScope::Book,
-            "SHEET" => LinkScope::Sheet,
-            _ => LinkScope::Book, // Default: BOOK
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkStatus {
     All,     // Report all URLs
     Invalid, // Only report invalid/inaccessible URLs
@@ -45,22 +29,15 @@ impl LinkStatus {
 ///
 /// # Configuration
 ///
-/// * `url_links_scope` - Scope of check: "BOOK" (default, unique URLs per workbook) or "SHEET" (per sheet ranges).
 /// * `url_links_status` - Status to check: "ALL" (default, all URLs) or "INVALID" (only broken URLs).
 /// * `url_timeout_seconds` - Timeout for link validation in seconds (default: 5).
 pub struct WebUrlsRule {
-    scope: LinkScope,
     status: LinkStatus,
     timeout_secs: u64,
 }
 
 impl WebUrlsRule {
     pub fn new(config: &LinterConfig) -> Self {
-        let scope = config
-            .get_param_str("url_links_scope", None)
-            .map(LinkScope::from_str)
-            .unwrap_or(LinkScope::Book);
-
         let status = config
             .get_param_str("url_links_status", None)
             .map(LinkStatus::from_str)
@@ -71,7 +48,6 @@ impl WebUrlsRule {
             .unwrap_or(5) as u64;
 
         Self {
-            scope,
             status,
             timeout_secs,
         }
@@ -81,7 +57,6 @@ impl WebUrlsRule {
 impl Default for WebUrlsRule {
     fn default() -> Self {
         Self {
-            scope: LinkScope::Book,
             status: LinkStatus::All,
             timeout_secs: 5,
         }
@@ -103,7 +78,6 @@ impl LinterRule for WebUrlsRule {
 
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
-        let mut seen_urls = std::collections::HashSet::new();
 
         // Collect URLs from all sheets
         for sheet in &workbook.sheets {
@@ -113,14 +87,13 @@ impl LinterRule for WebUrlsRule {
                 if let crate::reader::workbook::CellValue::Text(text) = &cell.value {
                     let urls = extract_urls(text);
                     for url in urls {
-                        seen_urls.insert(url.clone());
                         url_cells.push((cell.row, cell.col, url));
                     }
                 }
             }
 
-            // SHEET scope: create range-based violations per sheet
-            if matches!(self.scope, LinkScope::Sheet) && !url_cells.is_empty() {
+            // Create range-based violations per sheet
+            if !url_cells.is_empty() {
                 let grouped = group_cells_by_value(url_cells);
                 for (url, cells) in grouped {
                     // Validate URL status if status is INVALID
@@ -153,33 +126,6 @@ impl LinterRule for WebUrlsRule {
                         ));
                     }
                 }
-            }
-        }
-
-        // BOOK scope: report unique URLs across entire workbook
-        if matches!(self.scope, LinkScope::Book) && !seen_urls.is_empty() {
-            for url in seen_urls {
-                // Validate URL status if status is INVALID
-                if matches!(self.status, LinkStatus::Invalid)
-                    && check_url_status(&url, self.timeout_secs)
-                {
-                    continue; // Skip valid URLs
-                }
-
-                let message = if matches!(self.status, LinkStatus::Invalid) {
-                    format!(
-                        "Invalid external URL '{}' (not accessible) found in workbook.",
-                        url
-                    )
-                } else {
-                    format!("External URL '{}' found in workbook.", url)
-                };
-                violations.push(Violation::new(
-                    self.id(),
-                    ViolationScope::Book,
-                    message,
-                    Severity::Warning,
-                ));
             }
         }
 
@@ -337,53 +283,13 @@ mod tests {
             ..Default::default()
         };
 
-        // Test SHEET scope
-        let rule = WebUrlsRule {
-            scope: LinkScope::Sheet,
-            status: LinkStatus::All,
-            timeout_secs: 5,
-        };
+        let rule = WebUrlsRule::default();
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "SEC005");
         assert!(violations[0].message.contains("https://example.com"));
         assert!(violations[0].message.contains("range"));
-    }
-
-    #[test]
-    fn test_url_book_scope() {
-        let mut cells = HashMap::new();
-        cells.insert(
-            (0, 0),
-            Cell {
-                num_fmt: None,
-                row: 0,
-                col: 0,
-                value: CellValue::Text("Visit https://example.com for more".to_string()),
-            },
-        );
-
-        let sheet = Sheet {
-            name: "Sheet1".to_string(),
-            cells,
-            used_range: Some((1, 1)),
-            ..Default::default()
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            ..Default::default()
-        };
-
-        // Test BOOK scope (default)
-        let rule = WebUrlsRule::default();
-        let violations = rule.check(&workbook).unwrap();
-
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].scope, ViolationScope::Book);
-        assert!(violations[0].message.contains("https://example.com"));
     }
 
     #[test]
@@ -414,11 +320,7 @@ mod tests {
             ..Default::default()
         };
 
-        let rule = WebUrlsRule {
-            scope: LinkScope::Book,
-            status: LinkStatus::All,
-            timeout_secs: 5,
-        };
+        let rule = WebUrlsRule::default();
         let violations = rule.check(&workbook).unwrap();
 
         // Should detect both URLs

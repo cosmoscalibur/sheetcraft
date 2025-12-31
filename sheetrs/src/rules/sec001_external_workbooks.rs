@@ -6,53 +6,21 @@ use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
-/// Scope for reporting external link violations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkScope {
-    /// Only report violations at the workbook level (metadata)
-    Book,
-    /// Report violations for individual cells/ranges referencing external workbooks
-    Sheet,
-}
-
-impl LinkScope {
-    fn from_str(s: &str) -> Self {
-        match s.to_uppercase().as_str() {
-            "BOOK" => LinkScope::Book,
-            "SHEET" => LinkScope::Sheet,
-            _ => LinkScope::Book, // Default: BOOK
-        }
-    }
-}
-
 /// Rule that detects references to external workbooks
 ///
-/// Can be configured to report just the presence of external links (Book scope)
-/// or pinpoint the specific ranges using them (Sheet scope).
-///
-/// # Configuration
-///
-/// * `external_workbook_scope` - "BOOK" (default) or "SHEET"
-pub struct ExternalWorkbooksRule {
-    scope: LinkScope,
-}
+/// Reports violations for individual cells/ranges referencing external workbooks.
+pub struct ExternalWorkbooksRule;
 
 impl ExternalWorkbooksRule {
     /// Create a new instance configured from the linter config
-    pub fn new(config: &LinterConfig) -> Self {
-        let scope = config
-            .get_param_str("external_workbook_scope", None)
-            .map(LinkScope::from_str)
-            .unwrap_or(LinkScope::Book);
-        Self { scope }
+    pub fn new(_config: &LinterConfig) -> Self {
+        Self
     }
 }
 
 impl Default for ExternalWorkbooksRule {
     fn default() -> Self {
-        Self {
-            scope: LinkScope::Book,
-        }
+        Self
     }
 }
 
@@ -72,53 +40,38 @@ impl LinterRule for ExternalWorkbooksRule {
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
 
-        // BOOK scope: from external_workbooks field
-        if matches!(self.scope, LinkScope::Book) {
-            for wb in &workbook.external_workbooks {
-                violations.push(Violation::new(
-                    self.id(),
-                    ViolationScope::Book,
-                    format!("External workbook '{}' found in metadata.", wb.path),
-                    Severity::Warning,
-                ));
-            }
-        }
+        for sheet in &workbook.sheets {
+            let mut workbook_cells: Vec<(u32, u32, usize)> = Vec::new();
 
-        // SHEET scope: from formulas
-        if matches!(self.scope, LinkScope::Sheet) {
-            for sheet in &workbook.sheets {
-                let mut workbook_cells: Vec<(u32, u32, usize)> = Vec::new();
-
-                for cell in sheet.all_cells() {
-                    if let Some(formula) = cell.value.as_formula() {
-                        let indices = extract_external_workbook_indices(formula);
-                        for idx in indices {
-                            workbook_cells.push((cell.row, cell.col, idx));
-                        }
+            for cell in sheet.all_cells() {
+                if let Some(formula) = cell.value.as_formula() {
+                    let indices = extract_external_workbook_indices(formula);
+                    for idx in indices {
+                        workbook_cells.push((cell.row, cell.col, idx));
                     }
                 }
+            }
 
-                let grouped = group_cells_by_index(workbook_cells);
-                for (idx, cells) in grouped {
-                    let wb_name = workbook
-                        .external_workbooks
-                        .get(idx)
-                        .map(|wb| wb.path.as_str())
-                        .unwrap_or("unknown");
+            let grouped = group_cells_by_index(workbook_cells);
+            for (idx, cells) in grouped {
+                let wb_name = workbook
+                    .external_workbooks
+                    .get(idx)
+                    .map(|wb| wb.path.as_str())
+                    .unwrap_or("unknown");
 
-                    let ranges = find_contiguous_ranges(&cells);
-                    for range in ranges {
-                        violations.push(Violation::new(
-                            self.id(),
-                            ViolationScope::Sheet(sheet.name.clone()),
-                            format!(
-                                "External workbook reference {} found in range: {}",
-                                wb_name,
-                                format_single_range(&range)
-                            ),
-                            Severity::Warning,
-                        ));
-                    }
+                let ranges = find_contiguous_ranges(&cells);
+                for range in ranges {
+                    violations.push(Violation::new(
+                        self.id(),
+                        ViolationScope::Sheet(sheet.name.clone()),
+                        format!(
+                            "External workbook reference {} found in range: {}",
+                            wb_name,
+                            format_single_range(&range)
+                        ),
+                        Severity::Warning,
+                    ));
                 }
             }
         }
@@ -276,44 +229,12 @@ mod tests {
             ..Default::default()
         };
 
-        // Test SHEET scope
-        let rule = ExternalWorkbooksRule {
-            scope: LinkScope::Sheet,
-        };
+        let rule = ExternalWorkbooksRule::default();
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "SEC001");
         assert!(violations[0].message.contains("Book1.xlsx"));
         assert!(violations[0].message.contains("range"));
-    }
-
-    #[test]
-    fn test_external_workbook_in_metadata() {
-        let sheet = Sheet {
-            name: "Sheet1".to_string(),
-            cells: HashMap::new(),
-            used_range: Some((0, 0)),
-            ..Default::default()
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            external_workbooks: vec![crate::reader::ExternalWorkbook {
-                index: 0,
-                path: "external_workbook.xlsx".to_string(),
-            }],
-            ..Default::default()
-        };
-
-        // Test BOOK scope (default)
-        let rule = ExternalWorkbooksRule::default();
-        let violations = rule.check(&workbook).unwrap();
-
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].scope, ViolationScope::Book);
-        assert!(violations[0].message.contains("external_workbook.xlsx"));
-        assert!(violations[0].message.contains("metadata"));
     }
 }
