@@ -68,7 +68,7 @@ function buildRulesUI() {
 
         const header = document.createElement('div');
         header.className = 'category-header';
-        header.innerHTML = `<span>${cat}</span> <span>▾</span>`;
+        header.innerHTML = `<span>${formatCategoryName(cat)}</span> <span>▾</span>`;
 
         const content = document.createElement('div');
         content.className = 'category-content';
@@ -78,7 +78,7 @@ function buildRulesUI() {
             item.className = 'rule-item';
             item.innerHTML = `
                 <input type="checkbox" id="rule-${rule.id}" data-id="${rule.id}" ${rule.is_default ? 'checked' : ''}>
-                <label for="rule-${rule.id}" class="rule-name" title="${rule.id}">${rule.name}</label>
+                <label for="rule-${rule.id}" class="rule-name" title="${rule.id}: ${rule.name}">${rule.name}</label>
             `;
             content.appendChild(item);
         });
@@ -92,6 +92,14 @@ function buildRulesUI() {
         catDiv.appendChild(content);
         rulesAccordion.appendChild(catDiv);
     });
+}
+
+function formatCategoryName(category) {
+    // Convert from PascalCase to readable format
+    return category
+        .replace(/([A-Z])/g, ' $1')
+        .trim()
+        .replace(/And/g, '&');
 }
 
 // File Handling
@@ -147,7 +155,7 @@ function processFile() {
     const extension = currentFileName.split('.').pop().toLowerCase();
 
     // Clear and show processing line
-    output.textContent = `Processing ${currentFileName}...\n`;
+    output.textContent = `⏳ Processing ${currentFileName}...\n\n`;
     updateStatus('Running...');
 
     const startTime = performance.now();
@@ -164,11 +172,13 @@ function processFile() {
         const endTime = performance.now();
         const duration = (endTime - startTime).toFixed(2);
 
-        output.textContent += JSON.stringify(result, null, 2);
-        output.textContent += `\n\n----------------------\nFinished in ${duration}ms`;
+        // Display the formatted text result
+        output.textContent = result;
+        output.textContent += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        output.textContent += `⏱️  Finished in ${duration}ms\n`;
         updateStatus('Success');
     } catch (e) {
-        output.textContent += `\nError: ${e}`;
+        output.textContent += `\n❌ Error: ${e}\n`;
         updateStatus('Failure');
         console.error("Processing error:", e);
     }
@@ -197,11 +207,11 @@ copyBtn.addEventListener('click', () => {
 });
 
 downloadBtn.addEventListener('click', () => {
-    const blob = new Blob([output.textContent], { type: 'application/json' });
+    const blob = new Blob([output.textContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentFileName}_${currentTool}.json`;
+    a.download = `${currentFileName}_${currentTool}.txt`;
     a.click();
     URL.revokeObjectURL(url);
 });

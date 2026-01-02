@@ -2,44 +2,14 @@ use serde::Serialize;
 use sheetrs::reader::read_workbook_from_reader;
 use sheetrs::rules::registry;
 use sheetrs::{Linter, LinterConfig, violation::Violation};
+use sheetrs::{Severity, ViolationScope};
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
-}
-
-#[derive(Serialize)]
-struct LintResult {
-    violations: Vec<Violation>,
-}
-
-#[wasm_bindgen]
-pub fn lint_workbook(
-    file_data: &[u8],
-    extension: &str,
-    config_toml: &str,
-) -> Result<JsValue, JsValue> {
-    let cursor = Cursor::new(file_data);
-    let workbook = read_workbook_from_reader(cursor, Some(extension))
-        .map_err(|e| JsValue::from_str(&format!("Reader error: {}", e)))?;
-
-    let config = if config_toml.trim().is_empty() {
-        LinterConfig::default()
-    } else {
-        LinterConfig::from_toml(config_toml)
-            .map_err(|e| JsValue::from_str(&format!("Config error: {}", e)))?
-    };
-
-    let linter = Linter::with_config(config);
-    let violations = linter
-        .lint_workbook(&workbook)
-        .map_err(|e| JsValue::from_str(&format!("Linter error: {}", e)))?;
-
-    let result = LintResult { violations };
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
 #[derive(Serialize)]
@@ -70,27 +40,168 @@ pub fn get_rules_definition() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_workbook_stats(file_data: &[u8], extension: &str) -> Result<JsValue, JsValue> {
+pub fn lint_workbook(
+    file_data: &[u8],
+    extension: &str,
+    config_toml: &str,
+) -> Result<String, JsValue> {
     let cursor = Cursor::new(file_data);
     let workbook = read_workbook_from_reader(cursor, Some(extension))
         .map_err(|e| JsValue::from_str(&format!("Reader error: {}", e)))?;
 
-    // Basic stats for now
-    #[derive(Serialize)]
-    struct Stats {
-        sheet_count: usize,
-        sheet_names: Vec<String>,
-        named_ranges_count: usize,
-        has_macros: bool,
-    }
-
-    let stats = Stats {
-        sheet_count: workbook.sheets.len(),
-        sheet_names: workbook.sheets.iter().map(|s| s.name.clone()).collect(),
-        named_ranges_count: workbook.defined_names.len(),
-        has_macros: workbook.has_macros,
+    let config = if config_toml.trim().is_empty() {
+        LinterConfig::default()
+    } else {
+        LinterConfig::from_toml(config_toml)
+            .map_err(|e| JsValue::from_str(&format!("Config error: {}", e)))?
     };
 
-    serde_wasm_bindgen::to_value(&stats)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    let linter = Linter::with_config(config);
+    let violations = linter
+        .lint_workbook(&workbook)
+        .map_err(|e| JsValue::from_str(&format!("Linter error: {}", e)))?;
+
+    Ok(format_violations_human(&violations))
+}
+
+fn format_violations_human(violations: &[Violation]) -> String {
+    let mut output = String::new();
+
+    if violations.is_empty() {
+        output.push_str("✓ No violations found!\n");
+        return output;
+    }
+
+    // Group violations by scope for hierarchical display
+    let mut book_violations = Vec::new();
+    let mut sheet_violations: BTreeMap<String, Vec<&Violation>> = BTreeMap::new();
+    let mut cell_violations: BTreeMap<String, BTreeMap<String, Vec<&Violation>>> = BTreeMap::new();
+
+    for violation in violations {
+        match &violation.scope {
+            ViolationScope::Book => book_violations.push(violation),
+            ViolationScope::Sheet(sheet) => {
+                sheet_violations
+                    .entry(sheet.clone())
+                    .or_default()
+                    .push(violation);
+            }
+            ViolationScope::Cell(sheet, cell_ref) => {
+                cell_violations
+                    .entry(sheet.clone())
+                    .or_default()
+                    .entry(cell_ref.to_string())
+                    .or_default()
+                    .push(violation);
+            }
+        }
+    }
+
+    // Print book-level violations
+    if !book_violations.is_empty() {
+        output.push_str("📚 Book-level violations:\n");
+        for violation in book_violations {
+            output.push_str(&format_violation(violation, 1));
+        }
+        output.push('\n');
+    }
+
+    // Print sheet-level violations
+    for (sheet_name, violations) in &sheet_violations {
+        output.push_str(&format!("📄 Sheet: {}\n", sheet_name));
+        for violation in violations {
+            output.push_str(&format_violation(violation, 1));
+        }
+        output.push('\n');
+    }
+
+    // Print cell-level violations
+    for (sheet_name, cells) in &cell_violations {
+        output.push_str(&format!("📄 Sheet: {}\n", sheet_name));
+        for (cell_ref, violations) in cells {
+            output.push_str(&format!("  📍 Cell: {}\n", cell_ref));
+            for violation in violations {
+                output.push_str(&format_violation(violation, 2));
+            }
+        }
+        output.push('\n');
+    }
+
+    // Print summary
+    let error_count = violations
+        .iter()
+        .filter(|v| v.severity == Severity::Error)
+        .count();
+    let warning_count = violations
+        .iter()
+        .filter(|v| v.severity == Severity::Warning)
+        .count();
+    let info_count = violations
+        .iter()
+        .filter(|v| v.severity == Severity::Info)
+        .count();
+
+    output.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    output.push_str("📊 Summary:\n");
+    if error_count > 0 {
+        output.push_str(&format!("  ❌ Errors: {}\n", error_count));
+    }
+    if warning_count > 0 {
+        output.push_str(&format!("  ⚠️  Warnings: {}\n", warning_count));
+    }
+    if info_count > 0 {
+        output.push_str(&format!("  ℹ️  Info: {}\n", info_count));
+    }
+
+    output
+}
+
+fn format_violation(violation: &Violation, indent: usize) -> String {
+    let indent_str = "  ".repeat(indent);
+    let severity_icon = match violation.severity {
+        Severity::Error => "❌",
+        Severity::Warning => "⚠️ ",
+        Severity::Info => "ℹ️ ",
+    };
+
+    format!(
+        "{}{} [{}] {}\n",
+        indent_str, severity_icon, violation.rule_id, violation.message
+    )
+}
+
+#[wasm_bindgen]
+pub fn get_workbook_stats(file_data: &[u8], extension: &str) -> Result<String, JsValue> {
+    let cursor = Cursor::new(file_data);
+    let workbook = read_workbook_from_reader(cursor, Some(extension))
+        .map_err(|e| JsValue::from_str(&format!("Reader error: {}", e)))?;
+
+    let mut output = String::new();
+
+    output.push_str("📊 Workbook Statistics\n");
+    output.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+
+    output.push_str(&format!("📄 Total Sheets: {}\n", workbook.sheets.len()));
+    output.push_str("\nSheet Names:\n");
+    for (i, sheet) in workbook.sheets.iter().enumerate() {
+        output.push_str(&format!("  {}. {}\n", i + 1, sheet.name));
+    }
+
+    output.push_str(&format!(
+        "\n🏷️  Named Ranges: {}\n",
+        workbook.defined_names.len()
+    ));
+    if !workbook.defined_names.is_empty() {
+        output.push_str("\nNamed Range List:\n");
+        for (i, (name, _formula)) in workbook.defined_names.iter().enumerate() {
+            output.push_str(&format!("  {}. {}\n", i + 1, name));
+        }
+    }
+
+    output.push_str(&format!(
+        "\n🔧 Contains Macros: {}\n",
+        if workbook.has_macros { "Yes" } else { "No" }
+    ));
+
+    Ok(output)
 }
