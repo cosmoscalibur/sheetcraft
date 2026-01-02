@@ -35,63 +35,95 @@ disabled_rules = ["UX", "SM"]
 
 ## Rule Reference
 
-### Error Rules (ERR)
+**sheetlint** uses a hierarchical rule system (1xx to 11xx) across 11 categories.
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **ERR001** | Error cell values (#DIV/0!, #REF!, etc.) | Yes | None |
-| **ERR002** | Broken named ranges | Yes | None |
-| **ERR003** | Circular references | Yes | `expand_ranges_in_dependencies` (bool, default: false) |
+### 1. Excel Errors (ERR1xx)
 
-### Security Rules (SEC)
+| ID | Description | Default |
+|----|-------------|---------|
+| **ERR101** | Broken defined name | Yes |
+| **ERR102** | Excel error | Yes |
+| **ERR103** | Reference to error | Yes |
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **SEC001** | External workbook references | Yes | None |
-| **SEC002** | Hidden sheets | No | None |
-| **SEC003** | Hidden columns or rows | No | None |
-| **SEC004** | Macros and scripts detection (VBA, ODS Basic/Scripts) | No | None |
-| **SEC005** | Web URL links in cell values | No | `url_links_status` (string: "INVALID"\|"ALL", default: "ALL"), `url_timeout_seconds` (int, default: 5) |
+### 2. Unreliable Calculations (CALC2xx)
 
-### Performance Rules (PERF)
+| ID | Description | Default | Params |
+|----|-------------|---------|--------|
+| **CALC201** | Hardcoded numbers in formulas | Yes | `ignore_hardcoded_int_values`, `ignore_hardcoded_power_of_ten` |
+| **CALC202** | Circular references | Yes | `expand_ranges_in_dependencies` |
+| **CALC203** | Double operator typos | Yes | None |
+| **CALC204** | Approximate lookup check | Yes | None |
+| **CALC205** | Double count | Yes | None |
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **PERF001** | Unused named ranges | Yes | None |
-| **PERF002** | Unused sheets (filled with content but unreferenced) | Yes | None |
-| **PERF005** | Empty unused sheets (no content, no formulas, unreferenced) | Yes | None |
-| **PERF003** | Large used range (empty cells beyond data) | Yes | `max_extra_row` (int, default 2), `max_extra_column` (int, default 2) |
-| **PERF004** | Excessive conditional formatting (:warning: Not tested) | No | `max_conditional_formatting` (int, default 5) |
+### 3. Reference Issues (REF3xx)
 
-### Usability Rules (UX)
+| ID | Description | Default | Params |
+|----|-------------|---------|--------|
+| **REF301** | Unused defined name | Yes | None |
+| **REF302** | Duplicate sheet name | Yes | None |
+| **REF303** | Empty sheet | Yes | None |
+| **REF304** | Large used range | Yes | `max_extra_row`, `max_extra_column` |
+| **REF305** | Blank row or column | Yes | `max_blank_row`, `max_blank_column` |
+| **REF306** | Unused sheet | Yes | None |
+| **REF307** | Whole column or row reference | Yes | None |
+| **REF308** | Current sheet reference | Yes | None |
+| **REF309** | Reference to empty cell | Yes | None |
+| **REF310** | Longer ref expected | Yes | None |
+| **REF311** | Reference to Pivot | Yes | None |
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **UX001** | Number as text | Yes | None |
-| **UX002** | Inconsistent date formatting | No | `date_format` (string, default: "mm/dd/yyyy") |
-| **UX003** | Blank rows/columns in used range | No | `max_blank_row` (int, default 2), `max_blank_column` (int, default 2) |
+### 4. Formula Interruptions (INT4xx)
 
+| ID | Description | Default |
+|----|-------------|---------|
+| **INT401** | Formula interrupted by data | Yes |
+| **INT402** | Interrupted by empty | Yes |
+| **INT403** | Formula interrupted by other formula | Yes |
 
-### Maintainability Rules (SM)
+### 5. Complexity (CPX5xx)
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **SM001** | Excessive sheet counts | Yes | `max_sheets` (int, default 50) |
-| **SM002** | Confusingly similar sheet names (normalized: lowercase, alphanumeric only) | Yes | None |
-| **SM003** | Long text cells | No | `max_text_length` (int, default 255) |
-| **SM004** | Merged cells | No | None |
-| **SM005** | Non-descriptive sheet names | Yes | `avoid_sheet_names` (`list<string>`, default: ["sheet", "copy"]) |
+| ID | Description | Default | Params |
+|----|-------------|---------|--------|
+| **CPX501** | Excessive sheet counts | Yes | `max_sheets` |
+| **CPX502** | Merged cells | Yes | None |
+| **CPX503** | Excessive cond formatting | Yes | `max_conditional_formatting` |
+| **CPX504** | Deep IF nesting | Yes | `max_if_nesting` |
+| **CPX505** | Many nested functions | Yes | `max_formula_nesting` |
+| **CPX509** | Long formulas | Yes | `max_formula_length` |
 
-### Formula Rules (FORM)
+### 6. Vulnerable Formulas (VUL6xx)
 
-| ID | Description | Default Active | Params |
-|----|-------------|----------------|--------|
-| **FORM001** | Long formulas | No | `max_formula_length` (int, default 255) |
-| **FORM002** | Volatile functions (NOW, RAND, etc.) | Yes | None |
-| **FORM003** | Duplicate formulas | Yes | None |
-| **FORM004** | Whole column/row references (A:A, 1:1) | Yes | None |
-| **FORM005** | Empty string logic tests (=A1="") | Yes | None |
-| **FORM006** | Deep formula nesting | No | `max_formula_nesting` (int, default 5) |
-| **FORM007** | Deep IF statement nesting | No | `max_if_nesting` (int, default 5) |
-| **FORM008** | Hardcoded numeric values in formulas | Yes | `ignore_hardcoded_int_values` (bool, default false), `ignore_hardcoded_power_of_ten` (bool, default true), `ignore_hardcoded_num_values` (`list<float>`, default [0, 0.25, ..., 3600]) |
-| **FORM009** | Usage of VLOOKUP/HLOOKUP (recommend XLOOKUP or INDEX/MATCH) | Yes | None |
+| ID | Description | Default |
+|----|-------------|---------|
+| **VUL601** | Duplicate formula | Yes |
+| **VUL602** | Volatile function | Yes |
+| **VUL603** | Empty string test (="") | Yes |
+| **VUL604** | Error Prone Functions | Yes |
+
+### 7. Data Issues (DATA7xx)
+
+| ID | Description | Default | Params |
+|----|-------------|---------|--------|
+| **DATA701** | Generic sheet name | Yes | `avoid_sheet_names` |
+| **DATA702** | Number stored as text | Yes | None |
+| **DATA703** | Inconsistent date format | Yes | `date_format` |
+| **DATA704** | Long text cells | Yes | `max_text_length` |
+
+### 8. External References (EXT8xx)
+
+| ID | Description | Default |
+|----|-------------|---------|
+| **EXT802** | External workbook links | Yes |
+| **EXT803** | Web URL links | Yes |
+
+### 9. Hidden Information (HID9xx)
+
+| ID | Description | Default |
+|----|-------------|---------|
+| **HID902** | Hidden sheets | Yes |
+| **HID904** | Hidden rows/columns | Yes |
+
+### 11. VBA Issues (VBA11xx)
+
+| ID | Description | Default |
+|----|-------------|---------|
+| **VBA1101** | Workbook has macros | Yes |

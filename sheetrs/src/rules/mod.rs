@@ -2,49 +2,96 @@
 
 pub mod registry;
 
-// Rule implementations
-pub mod err001_error_cells;
-pub mod err002_broken_named_ranges;
-pub mod err003_circular_references;
-pub mod form001_long_formula;
-pub mod form002_volatile_functions;
-pub mod form003_duplicate_formulas;
-pub mod form004_whole_column_row_refs;
-pub mod form005_empty_string_test;
-pub mod form006_deep_formula_nesting;
-pub mod form007_deep_if_nesting;
-pub mod form008_hardcoded_values_in_formulas;
-pub mod form009_vlookup_hlookup_usage;
-pub mod perf001_unused_named_ranges;
-pub mod perf002_unused_sheets;
-pub mod perf003_large_used_range;
-pub mod perf004_excessive_conditional_formatting;
-pub mod perf005_empty_sheets;
-pub mod sec001_external_workbooks;
-pub mod sec002_hidden_sheets;
-pub mod sec003_hidden_columns_rows;
-pub mod sec004_has_macros;
-pub mod sec005_web_urls;
+// Rule implementations - Excel Errors (1xx)
+pub mod err101_broken_named_ranges;
+pub mod err102_error_cells;
+pub mod err103_ref_to_error;
 
-pub mod sm001_excessive_sheet_counts;
-pub mod sm002_duplicate_sheet_names;
-pub mod sm003_long_text_cell;
-pub mod sm004_merged_cells;
-pub mod sm005_non_descriptive_sheet_name;
-pub mod ux001_inconsistent_number_format;
-pub mod ux002_inconsistent_date_format;
-pub mod ux003_blank_rows_columns;
+// Rule implementations - Unreliable Calculations (2xx)
+pub mod calc201_hardcoded_values;
+pub mod calc202_circular_references;
+pub mod calc203_double_operator;
+pub mod calc204_approximate_lookup;
+pub mod calc205_double_count;
+
+// Rule implementations - Reference Issues (3xx)
+pub mod ref301_unused_named_ranges;
+pub mod ref302_duplicate_names;
+pub mod ref303_empty_sheets;
+pub mod ref304_large_used_range;
+pub mod ref305_blank_rows_columns;
+pub mod ref306_unused_sheets;
+pub mod ref307_whole_column_row_refs;
+pub mod ref308_current_sheet_ref;
+pub mod ref309_ref_to_empty_cell;
+pub mod ref310_longer_ref_expected;
+pub mod ref311_reference_to_pivot;
+
+// Rule implementations - Formula Interruptions (4xx)
+pub mod int401_interrupted_by_data;
+pub mod int402_interrupted_by_empty;
+pub mod int403_interrupted_by_other;
+
+// Rule implementations - Complexity (5xx)
+pub mod cpx501_sheet_counts;
+pub mod cpx502_merged_cells;
+pub mod cpx503_excessive_conditional_formatting;
+pub mod cpx504_deep_if_nesting;
+pub mod cpx505_deep_formula_nesting;
+pub mod cpx506_many_operations;
+pub mod cpx507_multiple_sheet_ref;
+pub mod cpx508_many_references;
+pub mod cpx509_long_formula;
+
+// Rule implementations - Vulnerable Formulas (6xx)
+pub mod vul601_duplicate_formulas;
+pub mod vul602_volatile_functions;
+pub mod vul603_empty_string_test;
+pub mod vul604_error_prone_functions;
+pub mod vul605_legacy_array;
+pub mod vul606_deprecated_func;
+pub mod vul607_unprotected;
+
+// Rule implementations - Data Issues (7xx)
+pub mod dat701_sheet_names;
+pub mod dat702_numeric_formats;
+pub mod dat703_date_formats;
+pub mod dat704_long_text;
+pub mod dat705_unnecessary_space;
+pub mod dat706_numeric_text_calc;
+pub mod dat707_validation_miss;
+pub mod dat708_sensitive_data;
+
+// Rule implementations - External References (8xx)
+pub mod ext801_name_ext_ref;
+pub mod ext802_external_workbook;
+pub mod ext803_web_urls;
+pub mod ext804_pivot_ext_ref;
+pub mod ext805_chart_ext_ref;
+
+// Rule implementations - Hidden Information (9xx)
+pub mod hid901_hidden_defined_name;
+pub mod hid902_hidden_sheets;
+pub mod hid903_hidden_worksheet;
+pub mod hid904_hidden_columns_rows;
+pub mod hid905_hidden_formula;
+pub mod hid906_invisible_cell_value;
+
+// Rule implementations - Files & Settings (10xx)
+pub mod file1001_large_file_size;
+pub mod file1002_old_spreadsheet;
+pub mod file1003_date_system_1904;
+
+// Rule implementations - VBA Issues (11xx)
+pub mod vba1101_has_macros;
 
 use crate::reader::Workbook;
 use crate::violation::Violation;
 use anyhow::Result;
 
 /// Trait that all linter rules must implement
-///
-/// This trait defines the standard interface for a linter rule.
-/// Rules must provide identification (ID, name, category) and a check logic.
 pub trait LinterRule: Send + Sync {
-    /// Unique rule identifier (e.g., "ERR001")
+    /// Unique rule identifier (e.g., "ERR101")
     fn id(&self) -> &str;
 
     /// Human-readable rule name
@@ -54,44 +101,51 @@ pub trait LinterRule: Send + Sync {
     fn category(&self) -> RuleCategory;
 
     /// Check the workbook for violations
-    ///
-    /// # Arguments
-    ///
-    /// * `workbook` - The parsed workbook to inspect
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Vec<Violation>>` - A list of violations found, or an error if the check failed
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>>;
 }
 
-/// Rule categories for grouping violations
+/// Rule categories matching the comparative report sections
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleCategory {
-    /// Errors that prevent calculation or refer to missing invalid data (e.g., #REF!, #DIV/0!)
-    UnresolvedErrors,
-    /// Security risks (e.g., macros, external links, hidden content)
-    SecurityAndPrivacy,
-    /// Issues related to usability and formatting (e.g., inconsistent formats)
-    FormattingAndUsability,
-    /// Structural issues affecting maintainability (e.g., merged cells, messy names)
-    StructuralAndMaintainability,
-    /// Performance issues (e.g., unused ranges, volatile functions)
-    Performance,
-    /// Formula-related issues (e.g., long formulas, complexity)
-    Formula,
+    /// Excel Errors (1xx)
+    ExcelErrors,
+    /// Unreliable Calculations (2xx)
+    Calculations,
+    /// Reference Issues (3xx)
+    Reference,
+    /// Formula Interruptions (4xx)
+    Interruptions,
+    /// Complexity (5xx)
+    Complexity,
+    /// Vulnerable Formulas (6xx)
+    Vulnerability,
+    /// Data Issues (7xx)
+    Data,
+    /// External References (8xx)
+    External,
+    /// Hidden Information (9xx)
+    Hidden,
+    /// Files & Settings (10xx)
+    File,
+    /// VBA Issues (11xx)
+    VBA,
 }
 
 impl RuleCategory {
     /// Get the human-readable string representation of the category
     pub fn as_str(&self) -> &str {
         match self {
-            RuleCategory::UnresolvedErrors => "Unresolved Errors",
-            RuleCategory::SecurityAndPrivacy => "Security and Privacy",
-            RuleCategory::FormattingAndUsability => "Formatting and Usability",
-            RuleCategory::StructuralAndMaintainability => "Structural and Maintainability",
-            RuleCategory::Performance => "Performance",
-            RuleCategory::Formula => "Formula",
+            RuleCategory::ExcelErrors => "Excel Errors",
+            RuleCategory::Calculations => "Unreliable Calculations",
+            RuleCategory::Reference => "Reference Issues",
+            RuleCategory::Interruptions => "Formula Interruptions",
+            RuleCategory::Complexity => "Complexity",
+            RuleCategory::Vulnerability => "Vulnerable Formulas",
+            RuleCategory::Data => "Data Issues",
+            RuleCategory::External => "External References",
+            RuleCategory::Hidden => "Hidden Information",
+            RuleCategory::File => "Files & Settings",
+            RuleCategory::VBA => "VBA Issues",
         }
     }
 }
