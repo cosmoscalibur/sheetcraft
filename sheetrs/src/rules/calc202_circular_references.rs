@@ -14,17 +14,20 @@ use std::collections::{HashMap, HashSet};
 /// Circular references occur when a formula refers back to its own cell, either directly or indirectly.
 /// This can cause calculation errors and infinite loops.
 ///
-/// # Configuration
+/// # Range Handling
 ///
-/// * `expand_ranges_in_dependencies` - If true, expands range references (e.g. A1:B2) into individual cell dependencies.
-///   Default is false (optimization).
+/// To prevent excessive memory usage with large spreadsheets, range references (e.g., `A1:B10`)
+/// are represented by their corner cells (start and end) rather than being fully expanded.
+/// This means circular references that pass through the middle of a range may not be detected.
+///
+/// Note: Whole column/row references (e.g., `A:A`, `1:1`) are not matched by the cell reference
+/// pattern and are flagged by rule REF307.
 pub struct CircularReferenceRule {
     cell_ref_pattern: Regex,
-    config: crate::config::LinterConfig,
 }
 
 impl CircularReferenceRule {
-    pub fn new(config: &crate::config::LinterConfig) -> Self {
+    pub fn new() -> Self {
         // Regex to match cell references (e.g., A1, $A$1, Sheet1!A1, 'Sheet Name'!A1, A1:B2)
         // Group 1: Sheet name (optional) - either quoted or unquoted
         // Group 4: Start column
@@ -36,16 +39,13 @@ impl CircularReferenceRule {
         )
         .unwrap();
 
-        Self {
-            cell_ref_pattern,
-            config: config.clone(),
-        }
+        Self { cell_ref_pattern }
     }
 }
 
 impl Default for CircularReferenceRule {
     fn default() -> Self {
-        Self::new(&crate::config::LinterConfig::default())
+        Self::new()
     }
 }
 
@@ -71,19 +71,10 @@ impl LinterRule for CircularReferenceRule {
 
         // 1. Build the global dependency graph
         for sheet in &workbook.sheets {
-            let expand_ranges = self
-                .config
-                .get_param_bool("expand_ranges_in_dependencies", Some(&sheet.name))
-                .unwrap_or(false);
-
             for cell in sheet.all_cells() {
                 if let Some(formula) = cell.value.as_formula() {
-                    let refs = extract_cell_references(
-                        formula,
-                        &self.cell_ref_pattern,
-                        &sheet.name,
-                        expand_ranges,
-                    );
+                    let refs =
+                        extract_cell_references(formula, &self.cell_ref_pattern, &sheet.name);
                     dependencies.insert((sheet.name.clone(), cell.row, cell.col), refs);
                 }
             }
@@ -128,12 +119,15 @@ impl LinterRule for CircularReferenceRule {
     }
 }
 
-/// Extract cell references from a formula, resolving relative sheet names and expanding ranges
+/// Extract cell references from a formula, resolving relative sheet names.
+///
+/// Range references are represented by their corner cells (start and end) to prevent
+/// excessive memory usage with large spreadsheets. This means circular references that
+/// pass through the middle of a range may not be detected.
 fn extract_cell_references(
     formula: &str,
     pattern: &Regex,
     current_sheet: &str,
-    expand_ranges: bool,
 ) -> Vec<(String, u32, u32)> {
     let mut references = Vec::new();
 
@@ -174,22 +168,9 @@ fn extract_cell_references(
                 let end_row_str = end_row_match.as_str();
 
                 if let Some((end_row, end_col)) = parse_components(end_row_str, end_col_str) {
-                    // Expand range
-                    let min_r = start_row.min(end_row);
-                    let max_r = start_row.max(end_row);
-                    let min_c = start_col.min(end_col);
-                    let max_c = start_col.max(end_col);
-
-                    if expand_ranges && (max_r - min_r + 1) * (max_c - min_c + 1) <= 100_000 {
-                        for r in min_r..=max_r {
-                            for c in min_c..=max_c {
-                                references.push((sheet_name.clone(), r, c));
-                            }
-                        }
-                    } else {
-                        references.push((sheet_name.clone(), start_row, start_col));
-                        references.push((sheet_name.clone(), end_row, end_col));
-                    }
+                    // Only track corner cells to prevent memory issues
+                    references.push((sheet_name.clone(), start_row, start_col));
+                    references.push((sheet_name, end_row, end_col));
                 }
             } else {
                 // Single cell reference
@@ -336,7 +317,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new(&crate::config::LinterConfig::default());
+        let rule = CircularReferenceRule::new();
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
@@ -367,7 +348,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new(&crate::config::LinterConfig::default());
+        let rule = CircularReferenceRule::new();
         let violations = rule.check(&workbook).unwrap();
 
         assert!(!violations.is_empty());
@@ -378,7 +359,8 @@ mod tests {
         let mut cells = HashMap::new();
         // A1 = SUM(B1:B3)
         // B2 = A1
-        // Cycle: A1 -> B2 -> A1
+        // With non-expanding mode: A1 -> B1, B3. B2 -> A1. No cycle detected.
+        // This test verifies the current behavior (no expansion)
         cells.insert(
             (0, 0),
             Cell {
@@ -399,101 +381,11 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        // By default expand_ranges is FALSE.
-        // Global expand is set to true for this test.
-        let mut config = crate::config::LinterConfig::default();
-        config.global.params.insert(
-            "expand_ranges_in_dependencies".to_string(),
-            toml::Value::Boolean(true),
-        );
-
-        let rule = CircularReferenceRule::new(&config);
+        let rule = CircularReferenceRule::new();
         let violations = rule.check(&workbook).unwrap();
 
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("Sheet1!A1"));
-        assert!(violations[0].message.contains("Sheet1!B2"));
-    }
-
-    #[test]
-    fn test_circular_reference_range_no_expand() {
-        let mut cells = HashMap::new();
-        // A1 = SUM(B1:B3)
-        // B2 = A1
-        // Cycle: A1 -> B2 -> A1 (ONLY if A1 is expanded to depend on B2)
-        // If no expand: A1 -> B1, B3. B2 -> A1. No cycle.
-        cells.insert(
-            (0, 0),
-            Cell {
-                num_fmt: None,
-                row: 0,
-                col: 0,
-                value: CellValue::formula("=SUM(B1:B3)".to_string()),
-            },
-        );
-        cells.insert(
-            (1, 1),
-            Cell {
-                num_fmt: None,
-                row: 1,
-                col: 1,
-                value: CellValue::formula("=A1".to_string()),
-            },
-        );
-
-        let workbook = create_test_workbook("Sheet1", cells);
-        // Default config has expand=false
-        let rule = CircularReferenceRule::new(&crate::config::LinterConfig::default());
-        let violations = rule.check(&workbook).unwrap();
-
-        // Should NOT detect cycle
+        // Should NOT detect cycle with non-expanding mode
         assert_eq!(violations.len(), 0);
-    }
-
-    #[test]
-    fn test_circular_reference_range_sheet_override() {
-        let mut cells = HashMap::new();
-        // A1 = SUM(B1:B3)
-        // B2 = A1
-        cells.insert(
-            (0, 0),
-            Cell {
-                num_fmt: None,
-                row: 0,
-                col: 0,
-                value: CellValue::formula("=SUM(B1:B3)".to_string()),
-            },
-        );
-        cells.insert(
-            (1, 1),
-            Cell {
-                num_fmt: None,
-                row: 1,
-                col: 1,
-                value: CellValue::formula("=A1".to_string()),
-            },
-        );
-
-        let workbook = create_test_workbook("Sheet1", cells);
-
-        // Global false, but Sheet1 true
-        let mut config = crate::config::LinterConfig::default();
-        config.global.params.insert(
-            "expand_ranges_in_dependencies".to_string(),
-            toml::Value::Boolean(false),
-        );
-        let mut sheet_conf = crate::config::SheetConfig::default();
-        sheet_conf.params.insert(
-            "expand_ranges_in_dependencies".to_string(),
-            toml::Value::Boolean(true),
-        );
-        config.sheets.insert("Sheet1".to_string(), sheet_conf);
-
-        let rule = CircularReferenceRule::new(&config);
-        let violations = rule.check(&workbook).unwrap();
-
-        // Should detect cycle because Sheet1 expanded
-        assert_eq!(violations.len(), 1);
     }
 
     #[test]
@@ -521,7 +413,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new(&crate::config::LinterConfig::default());
+        let rule = CircularReferenceRule::new();
         let violations = rule.check(&workbook).unwrap();
 
         // Cycle: A1 -> A3 -> A1

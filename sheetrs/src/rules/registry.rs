@@ -65,9 +65,7 @@ fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(err103_ref_to_error::RefToErrorRule),
         // Unreliable Calculations (2xx)
         Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config)),
-        Box::new(calc202_circular_references::CircularReferenceRule::new(
-            config,
-        )),
+        Box::new(calc202_circular_references::CircularReferenceRule::new()),
         Box::new(calc203_double_operator::DoubleOperatorRule),
         Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         Box::new(calc205_double_count::DoubleCountRule),

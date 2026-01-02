@@ -19,7 +19,6 @@ max_formula_length = 255
 max_text_length = 255
 avoid_sheet_names = ["sheet", "copy"]
 date_format = "mm-dd-yyyy"
-expand_ranges_in_dependencies = false
 # Formula nesting limits
 max_formula_nesting = 2
 max_if_nesting = 2

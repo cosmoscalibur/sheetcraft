@@ -49,8 +49,8 @@ disabled_rules = ["UX", "SM"]
 
 | ID | Description | Default | Params |
 |----|-------------|---------|--------|
-| **CALC201** | Hardcoded numbers in formulas | Yes | `ignore_hardcoded_int_values`, `ignore_hardcoded_power_of_ten` |
-| **CALC202** | Circular references | Yes | `expand_ranges_in_dependencies` |
+| **CALC201** | Hardcoded numbers in formulas | Yes | `ignore_hardcoded_num_values`, `ignore_hardcoded_int_values`, `ignore_hardcoded_power_of_ten` |
+| **CALC202** | Circular references | Yes | None |
 | **CALC203** | Double operator typos | Yes | None |
 | **CALC204** | Approximate lookup check | Yes | None |
 | **CALC205** | Double count | Yes | None |
