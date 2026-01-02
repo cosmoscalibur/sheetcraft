@@ -138,13 +138,17 @@ function handleFile(file) {
         currentFileName = file.name;
         fileInfo.textContent = `File: ${file.name} (${formatSize(file.size)})`;
 
+        // Clear previous results when loading a new file
+        output.textContent = 'Welcome to SheetRS WASM Demo.\n1. Select a tool and configure it.\n2. Upload a spreadsheet.\n3. Press Play!';
+        updateStatus('Loading file...');
+
         const reader = new FileReader();
         reader.onload = (e) => {
             currentFileData = new Uint8Array(e.target.result);
             if (playBtn) {
                 playBtn.disabled = false;
             }
-            updateStatus('File loaded and ready');
+            updateStatus('✓ File loaded - Ready to run');
         };
         reader.onerror = (err) => {
             console.error("FileReader error:", err);
@@ -164,34 +168,43 @@ function processFile() {
 
     const extension = currentFileName.split('.').pop().toLowerCase();
 
+    // Update status immediately when button is pressed
+    updateStatus('⏳ Processing...');
+    playBtn.disabled = true;
+
     // Clear and show processing line
     output.textContent = `⏳ Processing ${currentFileName}...\n\n`;
-    updateStatus('Running...');
 
-    const startTime = performance.now();
+    // Use setTimeout to allow UI to update before heavy processing
+    setTimeout(() => {
 
-    try {
-        let result;
-        if (currentTool === 'lint') {
-            const configToml = buildConfigToml();
-            result = lint_workbook(currentFileData, extension, configToml);
-        } else if (currentTool === 'stats') {
-            result = get_workbook_stats(currentFileData, extension);
+        const startTime = performance.now();
+
+        try {
+            let result;
+            if (currentTool === 'lint') {
+                const configToml = buildConfigToml();
+                result = lint_workbook(currentFileData, extension, configToml);
+            } else if (currentTool === 'stats') {
+                result = get_workbook_stats(currentFileData, extension);
+            }
+
+            const endTime = performance.now();
+            const duration = (endTime - startTime).toFixed(2);
+
+            // Display the formatted text result
+            output.textContent = result;
+            output.textContent += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            output.textContent += `⏱️  Finished in ${duration}ms\n`;
+            updateStatus('✓ Success');
+            playBtn.disabled = false;
+        } catch (e) {
+            output.textContent += `\n❌ Error: ${e}\n`;
+            updateStatus('❌ Error occurred');
+            playBtn.disabled = false;
+            console.error("Processing error:", e);
         }
-
-        const endTime = performance.now();
-        const duration = (endTime - startTime).toFixed(2);
-
-        // Display the formatted text result
-        output.textContent = result;
-        output.textContent += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        output.textContent += `⏱️  Finished in ${duration}ms\n`;
-        updateStatus('Success');
-    } catch (e) {
-        output.textContent += `\n❌ Error: ${e}\n`;
-        updateStatus('Failure');
-        console.error("Processing error:", e);
-    }
+    }, 10);
 }
 
 function buildConfigToml() {
