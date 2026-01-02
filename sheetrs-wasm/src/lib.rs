@@ -3,7 +3,7 @@ use sheetrs::reader::read_workbook_from_reader;
 use sheetrs::rules::registry;
 use sheetrs::{Linter, LinterConfig, violation::Violation};
 use sheetrs::{Severity, ViolationScope};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
 
@@ -56,15 +56,25 @@ pub fn lint_workbook(
             .map_err(|e| JsValue::from_str(&format!("Config error: {}", e)))?
     };
 
-    let linter = Linter::with_config(config);
+    let linter = Linter::with_config(config.clone());
     let violations = linter
         .lint_workbook(&workbook)
         .map_err(|e| JsValue::from_str(&format!("Linter error: {}", e)))?;
 
-    Ok(format_violations_human(&violations))
+    // Create a map of rule_id -> rule_name for better output
+    let rules = registry::create_all_rules(&config);
+    let rule_names: HashMap<String, String> = rules
+        .iter()
+        .map(|r| (r.id().to_string(), r.name().to_string()))
+        .collect();
+
+    Ok(format_violations_human(&violations, &rule_names))
 }
 
-fn format_violations_human(violations: &[Violation]) -> String {
+fn format_violations_human(
+    violations: &[Violation],
+    rule_names: &HashMap<String, String>,
+) -> String {
     let mut output = String::new();
 
     if violations.is_empty() {
@@ -101,7 +111,7 @@ fn format_violations_human(violations: &[Violation]) -> String {
     if !book_violations.is_empty() {
         output.push_str("📚 Book-level violations:\n");
         for violation in book_violations {
-            output.push_str(&format_violation(violation, 1));
+            output.push_str(&format_violation(violation, rule_names, 1));
         }
         output.push('\n');
     }
@@ -110,7 +120,7 @@ fn format_violations_human(violations: &[Violation]) -> String {
     for (sheet_name, violations) in &sheet_violations {
         output.push_str(&format!("📄 Sheet: {}\n", sheet_name));
         for violation in violations {
-            output.push_str(&format_violation(violation, 1));
+            output.push_str(&format_violation(violation, rule_names, 1));
         }
         output.push('\n');
     }
@@ -121,7 +131,7 @@ fn format_violations_human(violations: &[Violation]) -> String {
         for (cell_ref, violations) in cells {
             output.push_str(&format!("  📍 Cell: {}\n", cell_ref));
             for violation in violations {
-                output.push_str(&format_violation(violation, 2));
+                output.push_str(&format_violation(violation, rule_names, 2));
             }
         }
         output.push('\n');
@@ -156,7 +166,11 @@ fn format_violations_human(violations: &[Violation]) -> String {
     output
 }
 
-fn format_violation(violation: &Violation, indent: usize) -> String {
+fn format_violation(
+    violation: &Violation,
+    rule_names: &HashMap<String, String>,
+    indent: usize,
+) -> String {
     let indent_str = "  ".repeat(indent);
     let severity_icon = match violation.severity {
         Severity::Error => "❌",
@@ -164,9 +178,14 @@ fn format_violation(violation: &Violation, indent: usize) -> String {
         Severity::Info => "ℹ️ ",
     };
 
+    let rule_name = rule_names
+        .get(&violation.rule_id)
+        .map(|s| s.as_str())
+        .unwrap_or("Unknown rule");
+
     format!(
-        "{}{} [{}] {}\n",
-        indent_str, severity_icon, violation.rule_id, violation.message
+        "{}{} [{}] {} - {}\n",
+        indent_str, severity_icon, violation.rule_id, rule_name, violation.message
     )
 }
 
