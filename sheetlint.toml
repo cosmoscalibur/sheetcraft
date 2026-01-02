@@ -30,7 +30,7 @@ ignore_hardcoded_power_of_ten = false
 # Override global parameters or disable rules for specific sheets
 
 [sheets."Auxiliar"]
-disabled_rules = ["SM003"]
+disabled_rules = []
 
 [sheets."INPUTS"]
-disabled_rules = ["SM003", "FORM003"]
+disabled_rules = []

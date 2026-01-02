@@ -18,22 +18,20 @@ pub fn print_human(file_path: &Path, violations: &[Violation]) {
 
     // Group violations by scope for hierarchical display
     let mut book_violations = Vec::new();
-    let mut sheet_violations: BTreeMap<String, Vec<&Violation>> = BTreeMap::new();
-    let mut cell_violations: BTreeMap<String, BTreeMap<String, Vec<&Violation>>> = BTreeMap::new();
+    // BTreeMap<SheetName, (SheetLevelViolations, BTreeMap<CellRef, CellLevelViolations>)>
+    let mut sheet_data: BTreeMap<String, (Vec<&Violation>, BTreeMap<String, Vec<&Violation>>)> =
+        BTreeMap::new();
 
     for violation in violations {
         match &violation.scope {
             ViolationScope::Book => book_violations.push(violation),
             ViolationScope::Sheet(sheet) => {
-                sheet_violations
-                    .entry(sheet.clone())
-                    .or_default()
-                    .push(violation);
+                let (sheet_v, _) = sheet_data.entry(sheet.clone()).or_default();
+                sheet_v.push(violation);
             }
             ViolationScope::Cell(sheet, cell_ref) => {
-                cell_violations
-                    .entry(sheet.clone())
-                    .or_default()
+                let (_, cell_v) = sheet_data.entry(sheet.clone()).or_default();
+                cell_v
                     .entry(cell_ref.to_string())
                     .or_default()
                     .push(violation);
@@ -50,19 +48,17 @@ pub fn print_human(file_path: &Path, violations: &[Violation]) {
         println!();
     }
 
-    // Print sheet-level violations
-    for (sheet_name, violations) in &sheet_violations {
+    // Print sheet violations (consolidated)
+    for (sheet_name, (sheet_violations, cell_violations)) in &sheet_data {
         println!("{} {}", "Sheet:".bold(), sheet_name.cyan().bold());
-        for violation in violations {
+
+        // Print sheet-level violations first
+        for violation in sheet_violations {
             print_violation(violation, 1);
         }
-        println!();
-    }
 
-    // Print cell-level violations
-    for (sheet_name, cells) in &cell_violations {
-        println!("{} {}", "Sheet:".bold(), sheet_name.cyan().bold());
-        for (cell_ref, violations) in cells {
+        // Print cell-level violations
+        for (cell_ref, violations) in cell_violations {
             println!("  {} {}", "Cell:".bold(), cell_ref.yellow());
             for violation in violations {
                 print_violation(violation, 2);
