@@ -130,7 +130,7 @@ fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(ext805_chart_ext_ref::ChartExtRefRule),
         // Hidden Information (9xx)
         Box::new(hid901_hidden_defined_name::HiddenDefinedNameRule),
-        Box::new(hid902_hidden_sheets::HiddenSheetsRule),
+        Box::new(hid902_very_hidden_worksheet::VeryHiddenWorksheetRule),
         Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
         Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
         Box::new(hid905_hidden_formula::HiddenFormulaRule),

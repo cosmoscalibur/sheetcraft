@@ -71,7 +71,7 @@ pub mod ext805_chart_ext_ref;
 
 // Rule implementations - Hidden Information (9xx)
 pub mod hid901_hidden_defined_name;
-pub mod hid902_hidden_sheets;
+pub mod hid902_very_hidden_worksheet;
 pub mod hid903_hidden_worksheet;
 pub mod hid904_hidden_columns_rows;
 pub mod hid905_hidden_formula;

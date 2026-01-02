@@ -1,13 +1,13 @@
 //! HID903: Hidden Worksheet detection
-//!
-//! Description: Detects worksheets hidden from view (standard hidden).
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
-/// Rule that identifies standard hidden worksheets
+/// Rule that detects hidden worksheets
+///
+/// Hidden sheets can sometimes contain sensitive data or deprecated logic that should be removed.
 pub struct HiddenWorksheetRule;
 
 impl LinterRule for HiddenWorksheetRule {
@@ -23,8 +23,69 @@ impl LinterRule for HiddenWorksheetRule {
         RuleCategory::Hidden
     }
 
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
+    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+        let mut violations = Vec::new();
+
+        for sheet in &workbook.sheets {
+            if !sheet.visible {
+                violations.push(Violation::new(
+                    self.id(),
+                    ViolationScope::Book,
+                    format!("Hidden sheet: {}", sheet.name),
+                    Severity::Warning,
+                ));
+            }
+        }
+
+        Ok(violations)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reader::workbook::Sheet;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_hidden_sheets() {
+        let visible_sheet = Sheet::new("Visible".to_string());
+        let hidden_sheet1 = Sheet {
+            name: "HiddenSheet1".to_string(),
+            visible: false,
+            ..Default::default()
+        };
+        let hidden_sheet2 = Sheet {
+            name: "HiddenSheet2".to_string(),
+            visible: false,
+            ..Default::default()
+        };
+
+        let workbook = Workbook {
+            path: PathBuf::from("test.xlsx"),
+            sheets: vec![visible_sheet, hidden_sheet1, hidden_sheet2],
+            ..Default::default()
+        };
+
+        let rule = HiddenWorksheetRule;
+        let violations = rule.check(&workbook).unwrap();
+
+        assert_eq!(violations.len(), 2);
+        assert_eq!(violations[0].rule_id, "HID903");
+        assert!(violations[0].message.contains("HiddenSheet1"));
+        assert!(violations[1].message.contains("HiddenSheet2"));
+    }
+
+    #[test]
+    fn test_no_hidden_sheets() {
+        let workbook = Workbook {
+            path: PathBuf::from("test.xlsx"),
+            ..Default::default()
+        };
+
+        let rule = HiddenWorksheetRule;
+        let violations = rule.check(&workbook).unwrap();
+
+        assert_eq!(violations.len(), 0);
     }
 }
