@@ -977,6 +977,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
     let mut shared_si = None;
     let mut shared_ref = None;
     let mut potential_error = None; // Store potential error value from t="e"
+    let mut is_array_formula = false;
     let mut buf = Vec::new();
 
     loop {
@@ -1023,11 +1024,11 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             b"si" => {
                                 si = attr.unescape_value()?.parse::<u32>().ok();
                             }
-                            b"t" => {
-                                if attr.value.as_ref() == b"shared" {
-                                    is_shared = true;
-                                }
-                            }
+                            b"t" => match attr.value.as_ref() {
+                                b"shared" => is_shared = true,
+                                b"array" => is_array_formula = true,
+                                _ => {}
+                            },
                             b"ref" => {
                                 shared_ref = Some(attr.unescape_value()?.to_string());
                             }
@@ -1087,8 +1088,15 @@ fn parse_cell_contents<R: std::io::BufRead>(
     if let Some(err) = potential_error
         && let Some(ref f) = formula
     {
-        // If t="e" is present with a formula, it's a formula that evaluated to an error
-        value = CellValue::formula_with_error(f.clone(), err);
+        // If t="e" is present with a formula, it's a formula that evaluated to an error.
+        // HEURISTIC: Legacy array formulas (CSE) often have t="e" and #VALUE! cached value
+        // as a placeholder even if they aren't real errors. We ignore #VALUE! if it's an array.
+        let looks_like_array = is_array_formula || f.contains(':');
+        if looks_like_array && err == "#VALUE!" {
+            value = CellValue::formula(f.clone());
+        } else {
+            value = CellValue::formula_with_error(f.clone(), err);
+        }
     }
 
     Ok((value, formula, shared_si, shared_ref))
