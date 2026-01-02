@@ -19,7 +19,12 @@ impl LinterConfig {
     /// Load configuration from a TOML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let config: LinterConfig = toml::from_str(&content)?;
+        Self::from_toml(&content)
+    }
+
+    /// Load configuration from a TOML string
+    pub fn from_toml(content: &str) -> Result<Self> {
+        let config: LinterConfig = toml::from_str(content)?;
         Ok(config)
     }
 

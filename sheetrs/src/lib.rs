@@ -37,10 +37,15 @@ impl Linter {
     /// Lint a spreadsheet file and return violations
     pub fn lint_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<Violation>> {
         let workbook = reader::read_workbook(path)?;
+        self.lint_workbook(&workbook)
+    }
+
+    /// Lint a workbook and return violations
+    pub fn lint_workbook(&self, workbook: &reader::Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
 
         for rule in &self.rules {
-            let rule_violations = rule.check(&workbook)?;
+            let rule_violations = rule.check(workbook)?;
 
             // Filter violations based on sheet configuration
             for violation in rule_violations {
@@ -48,10 +53,6 @@ impl Linter {
                     self.config
                         .is_rule_enabled_for_sheet(&violation.rule_id, sheet_name)
                 } else {
-                    // Book-level violations are enabled if the rule itself is enabled (config logic handles this)
-                    // But wait, the rules vector already contains only globally enabled rules.
-                    // However, we should double check if there's any reason a book-level rule would be disabled?
-                    // Usually book-level rules aren't sheet-specific, so default to true here.
                     true
                 };
 
@@ -65,6 +66,11 @@ impl Linter {
         violations.sort_by(|a, b| a.scope.cmp(&b.scope));
 
         Ok(violations)
+    }
+
+    /// Get a reference to the linter configuration
+    pub fn config(&self) -> &LinterConfig {
+        &self.config
     }
 }
 

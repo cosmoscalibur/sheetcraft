@@ -5,7 +5,7 @@ use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufReader, Cursor, Read, Write};
+use std::io::{Cursor, Read, Seek, Write};
 use std::path::Path;
 use zip::{ZipArchive, ZipWriter, write::FileOptions};
 
@@ -17,18 +17,15 @@ pub struct WorkbookModifications {
 }
 
 /// Modify an XLSX file by applying specified modifications
-pub fn modify_workbook_xlsx(
-    input_path: &Path,
-    output_path: &Path,
+pub fn modify_workbook_xlsx<R: Read + Seek, W: Write + Seek>(
+    mut input: R,
+    output: W,
     modifications: &WorkbookModifications,
 ) -> Result<()> {
-    let file = File::open(input_path)?;
-    let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader)?;
+    let mut archive = ZipArchive::new(&mut input)?;
 
     // Create output ZIP
-    let output_file = File::create(output_path)?;
-    let mut zip_writer = ZipWriter::new(output_file);
+    let mut zip_writer = ZipWriter::new(output);
 
     // Read workbook.xml needed for IDs and cleanup
     let workbook_xml = read_file_from_zip(&mut archive, "xl/workbook.xml")?;
@@ -107,7 +104,10 @@ pub fn modify_workbook_xlsx(
 
 // Helper functions
 
-fn read_file_from_zip(archive: &mut ZipArchive<BufReader<File>>, filename: &str) -> Result<String> {
+fn read_file_from_zip<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    filename: &str,
+) -> Result<String> {
     let mut file = archive.by_name(filename)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;

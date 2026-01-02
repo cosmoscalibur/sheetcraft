@@ -1,5 +1,5 @@
 [workspace]
-members = ["sheetrs", "sheetlint", "sheetstats", "sheetcli"]
+members = ["sheetrs", "sheetlint", "sheetstats", "sheetcli", "sheetrs-wasm"]
 resolver = "2"
 
 [workspace.package]
@@ -30,7 +30,7 @@ colored = "2.1"
 
 # XML parsing
 quick-xml = "0.37"
-zip = "2.2"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 # HTTP client for link validation
 reqwest = { version = "0.11", features = ["blocking"] }

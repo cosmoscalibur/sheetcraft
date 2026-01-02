@@ -224,7 +224,7 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
 }
 
 /// Check if a URL is accessible (returns true if accessible, false otherwise)
-#[cfg(feature = "link-validation")]
+#[cfg(all(feature = "link-validation", not(target_arch = "wasm32")))]
 fn check_url_status(url: &str, timeout_secs: u64) -> bool {
     use reqwest::blocking::Client;
     use std::time::Duration;
@@ -244,7 +244,7 @@ fn check_url_status(url: &str, timeout_secs: u64) -> bool {
     }
 }
 
-#[cfg(not(feature = "link-validation"))]
+#[cfg(any(not(feature = "link-validation"), target_arch = "wasm32"))]
 fn check_url_status(_url: &str, _timeout_secs: u64) -> bool {
     // Fallback: assume valid if feature not enabled
     true

@@ -57,7 +57,7 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 }
 
 /// Create instances of all available rules
-fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
+pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     vec![
         // Excel Errors (1xx)
         Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
