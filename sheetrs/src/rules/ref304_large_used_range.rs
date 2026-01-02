@@ -3,23 +3,21 @@
 //! Description: Used range metadata extending significantly beyond actual data or formulas.
 
 use super::{LinterRule, RuleCategory};
-use crate::config::LinterConfig;
 use crate::reader::Workbook;
 use crate::violation::{Severity, Violation, ViolationScope};
 use anyhow::Result;
 
+/// Rule that detects excessively large used ranges.
+///
+/// Uses a constant threshold of 2 rows/columns to detect when the used range
+/// extends significantly beyond actual data.
 #[derive(Default)]
-/// Rule that detects excessively large used ranges
-pub struct LargeUsedRangeRule {
-    config: LinterConfig,
-}
+pub struct LargeUsedRangeRule {}
 
 impl LargeUsedRangeRule {
-    /// Create a new instance with optional configuration
-    pub fn new(config: &LinterConfig) -> Self {
-        Self {
-            config: config.clone(),
-        }
+    /// Create a new instance
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -40,15 +38,9 @@ impl LinterRule for LargeUsedRangeRule {
         let mut violations = Vec::new();
 
         for sheet in &workbook.sheets {
-            let threshold_rows = self
-                .config
-                .get_param_int("max_extra_row", Some(&sheet.name))
-                .unwrap_or(2) as u32;
-
-            let threshold_cols = self
-                .config
-                .get_param_int("max_extra_column", Some(&sheet.name))
-                .unwrap_or(2) as u32;
+            // Use constant threshold of 2 rows/columns
+            const THRESHOLD_ROWS: u32 = 2;
+            const THRESHOLD_COLS: u32 = 2;
 
             if let Some((used_rows, used_cols)) = sheet.used_range {
                 // Find the last cell with actual data or formula
@@ -71,7 +63,7 @@ impl LinterRule for LargeUsedRangeRule {
                     let row_diff = used_rows.saturating_sub(last_data_row + 1);
                     let col_diff = used_cols.saturating_sub(last_data_col + 1);
 
-                    if row_diff > threshold_rows || col_diff > threshold_cols {
+                    if row_diff > THRESHOLD_ROWS || col_diff > THRESHOLD_COLS {
                         use crate::violation::CellReference;
 
                         let last_used_ref = CellReference::new(used_rows - 1, used_cols - 1);
@@ -82,7 +74,7 @@ impl LinterRule for LargeUsedRangeRule {
                             ViolationScope::Sheet(sheet.name.clone()),
                             format!(
                                 "Used range extends beyond data: last used cell {}, last data/formula cell {} (threshold: {}/{} rows/cols)",
-                                last_used_ref, last_data_ref, threshold_rows, threshold_cols
+                                last_used_ref, last_data_ref, THRESHOLD_ROWS, THRESHOLD_COLS
                             ),
                             Severity::Warning,
                         ));

@@ -62,8 +62,8 @@ disabled_rules = ["UX", "SM"]
 | **REF301** | Unused defined name | Yes | None |
 | **REF302** | Duplicate sheet name | Yes | None |
 | **REF303** | Empty sheet | Yes | None |
-| **REF304** | Large used range | Yes | `max_extra_row`, `max_extra_column` |
-| **REF305** | Blank row or column | Yes | `max_blank_row`, `max_blank_column` |
+| **REF304** | Large used range | Yes | None |
+| **REF305** | Blank row or column | Yes | None |
 | **REF306** | Unused sheet | Yes | None |
 | **REF307** | Whole column or row reference | Yes | None |
 | **REF308** | Current sheet reference | Yes | None |

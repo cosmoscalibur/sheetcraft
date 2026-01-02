@@ -10,8 +10,6 @@ disabled_rules = []
 
 # Global parameter defaults
 # All parameters are set here and can be overridden per sheet
-max_extra_row = 1
-max_extra_column = 1
 max_conditional_formatting = 0
 url_timeout_seconds = 2
 max_sheets = 5
@@ -22,9 +20,6 @@ date_format = "mm-dd-yyyy"
 # Formula nesting limits
 max_formula_nesting = 2
 max_if_nesting = 2
-# UX003 Config
-max_blank_row = 1
-max_blank_column = 1
 
 # FORM008: Hardcoded values config
 ignore_hardcoded_num_values = []
