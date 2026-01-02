@@ -62,13 +62,23 @@ function buildRulesUI() {
         categories[rule.category].push(rule);
     });
 
-    Object.keys(categories).sort().forEach(cat => {
+    // Sort categories by the numeric prefix of their first rule (1xx, 2xx, etc.)
+    const categoryOrder = Object.keys(categories).sort((a, b) => {
+        const aFirstRule = categories[a][0].id;
+        const bFirstRule = categories[b][0].id;
+        // Extract numeric prefix from rule IDs (e.g., "ERR101" -> 101)
+        const aNum = parseInt(aFirstRule.match(/\d+/)?.[0] || '0');
+        const bNum = parseInt(bFirstRule.match(/\d+/)?.[0] || '0');
+        return aNum - bNum;
+    });
+
+    categoryOrder.forEach(cat => {
         const catDiv = document.createElement('div');
         catDiv.className = 'accordion-category';
 
         const header = document.createElement('div');
         header.className = 'category-header';
-        header.innerHTML = `<span>${formatCategoryName(cat)}</span> <span>▾</span>`;
+        header.innerHTML = `<span>${cat}</span> <span>▾</span>`;
 
         const content = document.createElement('div');
         content.className = 'category-content';

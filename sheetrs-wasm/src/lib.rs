@@ -30,7 +30,7 @@ pub fn get_rules_definition() -> Result<JsValue, JsValue> {
         .map(|r| RuleInfo {
             id: r.id().to_string(),
             name: r.name().to_string(),
-            category: format!("{:?}", r.category()),
+            category: r.category().as_str().to_string(),
             is_default: registry::DEFAULT_ACTIVE_RULES.contains(&r.id()),
         })
         .collect();
