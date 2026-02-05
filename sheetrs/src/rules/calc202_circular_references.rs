@@ -71,25 +71,35 @@ impl LinterRule for CircularReferenceRule {
             .map(|s| (s.name.as_str(), s.sheet_index))
             .collect();
 
-        // Global dependency graph: (Sheet, Row, Col) -> Vec<(Sheet, Row, Col)>
+        // Global dependency graph: (SheetIndex, Row, Col) -> Vec<(SheetIndex, Row, Col)>
         // Type alias to avoid clippy::type_complexity warning
-        type CellDependencyMap = HashMap<(String, u32, u32), Vec<(String, u32, u32)>>;
+        type CellDependencyMap = HashMap<(u16, u32, u32), Vec<(u16, u32, u32)>>;
         let mut dependencies: CellDependencyMap = HashMap::new();
 
         // 1. Build the global dependency graph
         for sheet in &workbook.sheets {
             for cell in sheet.all_cells() {
                 if let Some(formula) = cell.value.as_formula() {
-                    let refs =
-                        extract_cell_references(formula, &self.cell_ref_pattern, &sheet.name);
-                    dependencies.insert((sheet.name.clone(), cell.row, cell.col), refs);
+                    let refs = extract_cell_references(
+                        formula,
+                        &self.cell_ref_pattern,
+                        sheet.sheet_index,
+                        &name_to_index,
+                    );
+                    dependencies.insert((sheet.sheet_index, cell.row, cell.col), refs);
                 }
             }
         }
 
         // 2. Detect circular references using DFS on the global graph
         let cycles = find_cycles(&dependencies);
-        // eprintln!("Total cycles found: {}", cycles.len());
+
+        // Build index-to-name map for violation messages
+        let index_to_name: HashMap<u16, &str> = workbook
+            .sheets
+            .iter()
+            .map(|s| (s.sheet_index, s.name.as_str()))
+            .collect();
 
         let mut reported_cells = HashSet::new();
 
@@ -98,27 +108,27 @@ impl LinterRule for CircularReferenceRule {
 
             if !is_duplicate {
                 for cell in &cycle {
-                    reported_cells.insert(cell.clone());
+                    reported_cells.insert(*cell);
                 }
 
                 // Format the cycle path including sheet names
                 let path_str: Vec<String> = cycle
                     .iter()
-                    .map(|(s, r, c)| format!("{}!{}", s, CellReference::new(*r, *c)))
+                    .map(|(idx, r, c)| {
+                        let sheet_name = index_to_name.get(idx).copied().unwrap_or("Unknown");
+                        format!("{}!{}", sheet_name, CellReference::new(*r, *c))
+                    })
                     .collect();
 
                 let full_path = format!("{} -> {}", path_str.join(" -> "), path_str[0]);
 
                 // Report on the first cell
-                let (sheet_name, r, c) = &cycle[0];
+                let (sheet_index, r, c) = &cycle[0];
                 let cell_ref = CellReference::new(*r, *c);
-
-                // Look up sheet index (default to 0 if not found)
-                let sheet_index = name_to_index.get(sheet_name.as_str()).copied().unwrap_or(0);
 
                 violations.push(Violation::new(
                     RuleId::Calc202,
-                    ViolationScope::Cell(sheet_index, cell_ref),
+                    ViolationScope::Cell(*sheet_index, cell_ref),
                     format!("Circular reference detected: {}", full_path),
                     Severity::Error,
                 ));
@@ -129,34 +139,41 @@ impl LinterRule for CircularReferenceRule {
     }
 }
 
-/// Extract cell references from a formula, resolving relative sheet names.
+/// Extract cell references from a formula, resolving sheet names to indices.
 ///
 /// Range references are represented by their corner cells (start and end) to prevent
-/// excessive memory usage with large spreadsheets. This means circular references that
-/// pass through the middle of a range may not be detected.
+/// excessive memory usage with large spreadsheets. External workbook references are
+/// skipped since they cannot cause circular references within the current workbook.
 fn extract_cell_references(
     formula: &str,
     pattern: &Regex,
-    current_sheet: &str,
-) -> Vec<(String, u32, u32)> {
+    current_sheet_index: u16,
+    name_to_index: &HashMap<&str, u16>,
+) -> Vec<(u16, u32, u32)> {
     let mut references = Vec::new();
 
     for cap in pattern.captures_iter(formula) {
-        // Determine sheet name
+        // Determine sheet index
         // Group 1: Sheet name wrapper
         // Group 2: Quoted content
         // Group 3: Unquoted content
-        let sheet_name = if cap.get(1).is_some() {
+        let sheet_index = if cap.get(1).is_some() {
             if let Some(quoted) = cap.get(2) {
-                quoted.as_str().to_string()
+                match name_to_index.get(quoted.as_str()).copied() {
+                    Some(idx) => idx,
+                    None => continue, // Skip external workbook references
+                }
             } else if let Some(unquoted) = cap.get(3) {
-                unquoted.as_str().to_string()
+                match name_to_index.get(unquoted.as_str()).copied() {
+                    Some(idx) => idx,
+                    None => continue, // Skip external workbook references
+                }
             } else {
                 // Fallback (shouldn't happen with valid regex)
-                current_sheet.to_string()
+                current_sheet_index
             }
         } else {
-            current_sheet.to_string()
+            current_sheet_index
         };
 
         // Group 4: Start Col (Alpha)
@@ -179,12 +196,12 @@ fn extract_cell_references(
 
                 if let Some((end_row, end_col)) = parse_components(end_row_str, end_col_str) {
                     // Only track corner cells to prevent memory issues
-                    references.push((sheet_name.clone(), start_row, start_col));
-                    references.push((sheet_name, end_row, end_col));
+                    references.push((sheet_index, start_row, start_col));
+                    references.push((sheet_index, end_row, end_col));
                 }
             } else {
                 // Single cell reference
-                references.push((sheet_name, start_row, start_col));
+                references.push((sheet_index, start_row, start_col));
             }
         }
     }
@@ -214,8 +231,8 @@ enum VisitState {
     Visited,
 }
 
-// Node type for global graph: (SheetName, Row, Col)
-type Node = (String, u32, u32);
+// Node type for global graph: (SheetIndex, Row, Col)
+type Node = (u16, u32, u32);
 
 /// Find all unique elementary cycles in the graph
 fn find_cycles(dependencies: &HashMap<Node, Vec<Node>>) -> Vec<Vec<Node>> {
@@ -224,24 +241,24 @@ fn find_cycles(dependencies: &HashMap<Node, Vec<Node>>) -> Vec<Vec<Node>> {
 
     // Initialize all nodes as unvisited
     for cell in dependencies.keys() {
-        state.insert(cell.clone(), VisitState::Unvisited);
+        state.insert(*cell, VisitState::Unvisited);
     }
     for deps in dependencies.values() {
         for dep in deps {
             if !state.contains_key(dep) {
-                state.insert(dep.clone(), VisitState::Unvisited);
+                state.insert(*dep, VisitState::Unvisited);
             }
         }
     }
 
     // Sort keys for deterministic output
-    let mut keys: Vec<Node> = state.keys().cloned().collect();
+    let mut keys: Vec<Node> = state.keys().copied().collect();
     keys.sort();
 
     for start_node in keys {
         if state.get(&start_node) == Some(&VisitState::Unvisited) {
             // Iterative DFS
-            let mut stack = vec![(start_node.clone(), 0)]; // (node, next_dep_idx)
+            let mut stack = vec![(start_node, 0)]; // (node, next_dep_idx)
             let mut path = Vec::new();
             let mut in_path = HashSet::new();
 
@@ -260,9 +277,9 @@ fn find_cycles(dependencies: &HashMap<Node, Vec<Node>>) -> Vec<Vec<Node>> {
                         continue;
                     }
 
-                    state.insert(u.clone(), VisitState::Visiting);
-                    in_path.insert(u.clone());
-                    path.push(u.clone());
+                    state.insert(u, VisitState::Visiting);
+                    in_path.insert(u);
+                    path.push(u);
                 }
 
                 if let Some(deps) = dependencies.get(&u) {
@@ -270,16 +287,16 @@ fn find_cycles(dependencies: &HashMap<Node, Vec<Node>>) -> Vec<Vec<Node>> {
                         // Push current node back with next index
                         stack.push((u, dep_idx + 1));
                         // Push neighbor to visit
-                        stack.push((deps[dep_idx].clone(), 0));
+                        stack.push((deps[dep_idx], 0));
                     } else {
                         // Finished visiting all neighbors
-                        state.insert(u.clone(), VisitState::Visited);
+                        state.insert(u, VisitState::Visited);
                         in_path.remove(&u);
                         path.pop();
                     }
                 } else {
                     // No dependencies
-                    state.insert(u.clone(), VisitState::Visited);
+                    state.insert(u, VisitState::Visited);
                     in_path.remove(&u);
                     path.pop();
                 }
