@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas with too many operations
 pub struct ManyOperationsRule;
 
 impl LinterRule for ManyOperationsRule {
-    fn id(&self) -> &str {
-        "CPX506"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx506
     }
 
     fn name(&self) -> &str {

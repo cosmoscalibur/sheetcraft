@@ -2,7 +2,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects the presence of macros (VBA/Scripts)
@@ -11,8 +11,8 @@ use anyhow::Result;
 pub struct HasMacrosRule;
 
 impl LinterRule for HasMacrosRule {
-    fn id(&self) -> &str {
-        "VBA1101"
+    fn id(&self) -> RuleId {
+        RuleId::Vba1101
     }
 
     fn name(&self) -> &str {
@@ -28,7 +28,7 @@ impl LinterRule for HasMacrosRule {
 
         if workbook.has_macros {
             violations.push(Violation::new(
-                self.id(),
+                RuleId::Vba1101,
                 ViolationScope::Book,
                 "Workbook contains macros or scripts. Review for security concerns.".to_string(),
                 Severity::Warning,
@@ -57,7 +57,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VBA1101");
+        assert_eq!(violations[0].rule_id, RuleId::Vba1101);
         assert!(violations[0].message.contains("macros"));
     }
 

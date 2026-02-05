@@ -3,7 +3,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects numbers stored as text
@@ -12,8 +12,8 @@ use anyhow::Result;
 pub struct InconsistentNumberFormatRule;
 
 impl LinterRule for InconsistentNumberFormatRule {
-    fn id(&self) -> &str {
-        "DATA702"
+    fn id(&self) -> RuleId {
+        RuleId::Data702
     }
 
     fn name(&self) -> &str {
@@ -48,8 +48,8 @@ impl LinterRule for InconsistentNumberFormatRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Data702,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!("Numeric data stored as text in range: {}", range_str),
                         Severity::Warning,
                     ));
@@ -198,6 +198,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((4, 1)),
             hidden_columns: Vec::new(),
@@ -221,7 +222,7 @@ mod tests {
 
         // Should detect numeric text as a range
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "DATA702");
+        assert_eq!(violations[0].rule_id, RuleId::Data702);
         assert!(violations[0].message.contains("range"));
         // The range should be "2 cells in A1:B2" since cells are at (0,0) and (1,0)
     }

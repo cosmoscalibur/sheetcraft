@@ -5,7 +5,7 @@
 use crate::config::LinterConfig;
 use crate::reader::{CellValue, Workbook};
 use crate::rules::{LinterRule, RuleCategory};
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use regex::Regex;
 
 /// Rule that detects hardcoded numeric values in formulas.
@@ -56,11 +56,11 @@ impl HardcodedValuesInFormulasRule {
 }
 
 impl LinterRule for HardcodedValuesInFormulasRule {
-    fn id(&self) -> &'static str {
-        "CALC201"
+    fn id(&self) -> RuleId {
+        RuleId::Calc201
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "Hardcoded Number"
     }
 
@@ -141,9 +141,9 @@ impl LinterRule for HardcodedValuesInFormulasRule {
                                     )
                                 {
                                     violations.push(Violation::new(
-                                        self.id(),
+                                        RuleId::Calc201,
                                         ViolationScope::Cell(
-                                            sheet.name.clone(),
+                                            sheet.sheet_index,
                                             crate::violation::CellReference {
                                                 row: *row,
                                                 col: *col,
@@ -215,6 +215,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 4)),
             ..Default::default()
@@ -333,6 +334,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 3)),
             ..Default::default()

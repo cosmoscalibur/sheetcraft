@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Constant threshold for blank rows/columns
@@ -16,6 +16,12 @@ const MAX_BLANK_COLUMN: u32 = 2;
 /// Uses a constant threshold of 2 to identify gaps of empty rows or columns.
 pub struct BlankRowsColumnsRule {}
 
+impl Default for BlankRowsColumnsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BlankRowsColumnsRule {
     /// Create a new instance
     pub fn new() -> Self {
@@ -24,8 +30,8 @@ impl BlankRowsColumnsRule {
 }
 
 impl LinterRule for BlankRowsColumnsRule {
-    fn id(&self) -> &str {
-        "REF305"
+    fn id(&self) -> RuleId {
+        RuleId::Ref305
     }
 
     fn name(&self) -> &str {
@@ -79,8 +85,8 @@ impl LinterRule for BlankRowsColumnsRule {
                 if !blank_rows_before.is_empty() && blank_rows_before.len() as u32 > MAX_BLANK_ROW {
                     let ranges = format_row_ranges(&blank_rows_before);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref305,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Blank rows within used range: {}. Consider removing or filling these rows.",
                             ranges
@@ -97,8 +103,8 @@ impl LinterRule for BlankRowsColumnsRule {
                 {
                     let ranges = format_column_ranges(&blank_cols_before);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref305,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Blank columns within used range: {}. Consider removing or filling these columns.",
                             ranges
@@ -127,8 +133,8 @@ impl LinterRule for BlankRowsColumnsRule {
 
                     let ranges = format_row_ranges(&all_filtered_rows);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref305,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Blank rows within used range: {}. Consider removing or filling these rows.",
                             ranges
@@ -156,8 +162,8 @@ impl LinterRule for BlankRowsColumnsRule {
 
                     let ranges = format_column_ranges(&all_filtered_cols);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref305,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Blank columns within used range: {}. Consider removing or filling these columns.",
                             ranges
@@ -394,6 +400,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((5, 2)),
             hidden_columns: Vec::new(),
@@ -417,7 +424,7 @@ mod tests {
 
         // With threshold of 2, should catch 3 blank rows
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF305");
+        assert_eq!(violations[0].rule_id, RuleId::Ref305);
         assert!(violations[0].message.contains("Blank rows"));
         // Should contain rows 2, 3, 4 (1-based)
         assert!(violations[0].message.contains("2-4"));
@@ -468,6 +475,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 5)),
             hidden_columns: Vec::new(),
@@ -491,7 +499,7 @@ mod tests {
 
         // With threshold of 2, should catch 3 blank columns
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF305");
+        assert_eq!(violations[0].rule_id, RuleId::Ref305);
         assert!(violations[0].message.contains("Blank columns"));
         // Should contain columns B, C, D
         assert!(violations[0].message.contains("B-D"));
@@ -539,6 +547,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 2)),
             hidden_columns: Vec::new(),
@@ -608,6 +617,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((3, 2)),
             hidden_columns: Vec::new(),
@@ -678,6 +688,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((4, 2)),
             hidden_columns: Vec::new(),
@@ -748,6 +759,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 3)),
             hidden_columns: Vec::new(),
@@ -818,6 +830,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 4)),
             hidden_columns: Vec::new(),
@@ -898,6 +911,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((5, 6)),
             hidden_columns: Vec::new(),
@@ -936,6 +950,7 @@ mod tests {
     fn test_empty_sheet_no_violations() {
         let sheet = Sheet {
             name: "Empty".to_string(),
+            sheet_index: 0,
             cells: HashMap::new(),
             used_range: Some((1, 1)), // A1 reported by parser
             hidden_columns: Vec::new(),
@@ -1015,6 +1030,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((5, 1)), // 5 rows, 1 col
             hidden_columns: Vec::new(),

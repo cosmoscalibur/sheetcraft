@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas with many references
 pub struct ManyReferencesRule;
 
 impl LinterRule for ManyReferencesRule {
-    fn id(&self) -> &str {
-        "CPX508"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx508
     }
 
     fn name(&self) -> &str {

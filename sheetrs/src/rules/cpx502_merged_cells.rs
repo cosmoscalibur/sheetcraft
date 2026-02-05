@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects merged cells
 pub struct MergedCellsRule;
 
 impl LinterRule for MergedCellsRule {
-    fn id(&self) -> &str {
-        "CPX502"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx502
     }
 
     fn name(&self) -> &str {
@@ -30,8 +30,8 @@ impl LinterRule for MergedCellsRule {
             for &(start_row, start_col, end_row, end_col) in &sheet.merged_cells {
                 let range_str = format_merged_range(start_row, start_col, end_row, end_col);
                 violations.push(Violation::new(
-                    self.id(),
-                    ViolationScope::Sheet(sheet.name.clone()),
+                    RuleId::Cpx502,
+                    ViolationScope::Sheet(sheet.sheet_index),
                     format!("Merged cells in range: {}", range_str),
                     Severity::Warning,
                 ));
@@ -74,7 +74,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2);
-        assert_eq!(violations[0].rule_id, "CPX502");
+        assert_eq!(violations[0].rule_id, RuleId::Cpx502);
         assert!(violations[0].message.contains("A1:C1"));
         assert!(violations[1].message.contains("A3:A5"));
     }

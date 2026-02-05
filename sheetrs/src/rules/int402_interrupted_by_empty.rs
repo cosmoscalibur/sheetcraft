@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas interrupted by empty cells
 pub struct InterruptedByEmptyRule;
 
 impl LinterRule for InterruptedByEmptyRule {
-    fn id(&self) -> &str {
-        "INT402"
+    fn id(&self) -> RuleId {
+        RuleId::Int402
     }
 
     fn name(&self) -> &str {

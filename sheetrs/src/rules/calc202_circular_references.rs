@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -50,8 +50,8 @@ impl Default for CircularReferenceRule {
 }
 
 impl LinterRule for CircularReferenceRule {
-    fn id(&self) -> &str {
-        "CALC202"
+    fn id(&self) -> RuleId {
+        RuleId::Calc202
     }
 
     fn name(&self) -> &str {
@@ -64,6 +64,13 @@ impl LinterRule for CircularReferenceRule {
 
     fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
+        // Build a name-to-index map for quick lookup
+        let name_to_index: HashMap<&str, u16> = workbook
+            .sheets
+            .iter()
+            .map(|s| (s.name.as_str(), s.sheet_index))
+            .collect();
+
         // Global dependency graph: (Sheet, Row, Col) -> Vec<(Sheet, Row, Col)>
         // Type alias to avoid clippy::type_complexity warning
         type CellDependencyMap = HashMap<(String, u32, u32), Vec<(String, u32, u32)>>;
@@ -106,9 +113,12 @@ impl LinterRule for CircularReferenceRule {
                 let (sheet_name, r, c) = &cycle[0];
                 let cell_ref = CellReference::new(*r, *c);
 
+                // Look up sheet index (default to 0 if not found)
+                let sheet_index = name_to_index.get(sheet_name.as_str()).copied().unwrap_or(0);
+
                 violations.push(Violation::new(
-                    self.id(),
-                    ViolationScope::Cell(sheet_name.clone(), cell_ref),
+                    RuleId::Calc202,
+                    ViolationScope::Cell(sheet_index, cell_ref),
                     format!("Circular reference detected: {}", full_path),
                     Severity::Error,
                 ));
@@ -290,6 +300,7 @@ mod tests {
     fn create_test_workbook(sheet_name: &str, cells: HashMap<(u32, u32), Cell>) -> Workbook {
         let sheet = Sheet {
             name: sheet_name.to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((10, 10)),
             ..Default::default()
@@ -321,7 +332,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "CALC202");
+        assert_eq!(violations[0].rule_id, RuleId::Calc202);
     }
 
     #[test]

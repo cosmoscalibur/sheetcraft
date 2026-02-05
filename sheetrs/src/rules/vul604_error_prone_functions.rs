@@ -5,7 +5,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::{CellValue, Workbook};
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 
 /// Rule that detects error-prone functions like VLOOKUP and HLOOKUP.
 pub struct ErrorProneFunctionsRule;
@@ -17,8 +17,8 @@ impl ErrorProneFunctionsRule {
 }
 
 impl LinterRule for ErrorProneFunctionsRule {
-    fn id(&self) -> &str {
-        "VUL604"
+    fn id(&self) -> RuleId {
+        RuleId::Vul604
     }
 
     fn name(&self) -> &str {
@@ -38,9 +38,9 @@ impl LinterRule for ErrorProneFunctionsRule {
                     let upper_formula = formula.to_uppercase();
                     if upper_formula.contains("VLOOKUP(") || upper_formula.contains("HLOOKUP(") {
                         violations.push(Violation::new(
-                            self.id(),
+                            RuleId::Vul604,
                             ViolationScope::Cell(
-                                sheet.name.clone(),
+                                sheet.sheet_index,
                                 crate::violation::CellReference {
                                     row: *row,
                                     col: *col,
@@ -99,6 +99,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 3)),
             hidden_columns: vec![],

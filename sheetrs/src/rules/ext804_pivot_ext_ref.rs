@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies external references in pivot tables
 pub struct PivotExtRefRule;
 
 impl LinterRule for PivotExtRefRule {
-    fn id(&self) -> &str {
-        "EXT804"
+    fn id(&self) -> RuleId {
+        RuleId::Ext804
     }
 
     fn name(&self) -> &str {

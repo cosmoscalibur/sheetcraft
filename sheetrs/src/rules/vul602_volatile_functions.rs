@@ -3,7 +3,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
@@ -33,8 +33,8 @@ impl VolatileFunctionsRule {
 }
 
 impl LinterRule for VolatileFunctionsRule {
-    fn id(&self) -> &str {
-        "VUL602"
+    fn id(&self) -> RuleId {
+        RuleId::Vul602
     }
 
     fn name(&self) -> &str {
@@ -78,8 +78,8 @@ impl LinterRule for VolatileFunctionsRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Vul602,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Volatile function {}() found in range: {}. Consider alternatives for better performance.",
                             func, range_str
@@ -179,6 +179,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -201,7 +202,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VUL602");
+        assert_eq!(violations[0].rule_id, RuleId::Vul602);
         assert!(violations[0].message.contains("NOW"));
     }
 
@@ -229,6 +230,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 1)),
             hidden_columns: Vec::new(),
@@ -268,6 +270,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),

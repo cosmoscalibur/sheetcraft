@@ -86,13 +86,13 @@ pub mod file1003_date_system_1904;
 pub mod vba1101_has_macros;
 
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Trait that all linter rules must implement
 pub trait LinterRule: Send + Sync {
-    /// Unique rule identifier (e.g., "ERR101")
-    fn id(&self) -> &str;
+    /// Unique rule identifier
+    fn id(&self) -> RuleId;
 
     /// Human-readable rule name
     fn name(&self) -> &str;

@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
@@ -38,8 +38,8 @@ impl Default for EmptyStringTestRule {
 }
 
 impl LinterRule for EmptyStringTestRule {
-    fn id(&self) -> &str {
-        "VUL603"
+    fn id(&self) -> RuleId {
+        RuleId::Vul603
     }
 
     fn name(&self) -> &str {
@@ -79,8 +79,8 @@ impl LinterRule for EmptyStringTestRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Vul603,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Empty string test (=\"\" or LEN()=0) found in range: {}. Consider using ISBLANK() for better readability.",
                             range_str
@@ -180,6 +180,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -202,7 +203,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VUL603");
+        assert_eq!(violations[0].rule_id, RuleId::Vul603);
         assert!(violations[0].message.contains("ISBLANK"));
     }
 
@@ -221,6 +222,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -243,7 +245,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VUL603");
+        assert_eq!(violations[0].rule_id, RuleId::Vul603);
     }
 
     #[test]
@@ -261,6 +263,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -283,7 +286,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VUL603");
+        assert_eq!(violations[0].rule_id, RuleId::Vul603);
     }
 
     #[test]
@@ -301,6 +304,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),

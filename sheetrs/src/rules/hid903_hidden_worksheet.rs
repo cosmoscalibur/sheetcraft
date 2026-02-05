@@ -2,7 +2,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects hidden worksheets
@@ -11,8 +11,8 @@ use anyhow::Result;
 pub struct HiddenWorksheetRule;
 
 impl LinterRule for HiddenWorksheetRule {
-    fn id(&self) -> &str {
-        "HID903"
+    fn id(&self) -> RuleId {
+        RuleId::Hid903
     }
 
     fn name(&self) -> &str {
@@ -29,7 +29,7 @@ impl LinterRule for HiddenWorksheetRule {
         for sheet in &workbook.sheets {
             if !sheet.visible {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Hid903,
                     ViolationScope::Book,
                     format!("Hidden sheet: {}", sheet.name),
                     Severity::Warning,
@@ -49,14 +49,16 @@ mod tests {
 
     #[test]
     fn test_hidden_sheets() {
-        let visible_sheet = Sheet::new("Visible".to_string());
+        let visible_sheet = Sheet::new("Visible".to_string(), 0);
         let hidden_sheet1 = Sheet {
             name: "HiddenSheet1".to_string(),
+            sheet_index: 0,
             visible: false,
             ..Default::default()
         };
         let hidden_sheet2 = Sheet {
             name: "HiddenSheet2".to_string(),
+            sheet_index: 0,
             visible: false,
             ..Default::default()
         };
@@ -71,7 +73,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2);
-        assert_eq!(violations[0].rule_id, "HID903");
+        assert_eq!(violations[0].rule_id, RuleId::Hid903);
         assert!(violations[0].message.contains("HiddenSheet1"));
         assert!(violations[1].message.contains("HiddenSheet2"));
     }

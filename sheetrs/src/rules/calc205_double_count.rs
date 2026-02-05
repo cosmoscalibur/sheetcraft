@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies double count issues in formulas
 pub struct DoubleCountRule;
 
 impl LinterRule for DoubleCountRule {
-    fn id(&self) -> &str {
-        "CALC205"
+    fn id(&self) -> RuleId {
+        RuleId::Calc205
     }
 
     fn name(&self) -> &str {

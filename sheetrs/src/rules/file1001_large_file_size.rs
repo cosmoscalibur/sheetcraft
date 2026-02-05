@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies excessively large physical file sizes
 pub struct LargeFileSizeRule;
 
 impl LinterRule for LargeFileSizeRule {
-    fn id(&self) -> &str {
-        "FILE1001"
+    fn id(&self) -> RuleId {
+        RuleId::File1001
     }
 
     fn name(&self) -> &str {

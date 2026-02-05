@@ -5,7 +5,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that checks if the workbook has an excessive number of sheets.
@@ -30,8 +30,8 @@ impl Default for ExcessiveSheetCountsRule {
 }
 
 impl LinterRule for ExcessiveSheetCountsRule {
-    fn id(&self) -> &str {
-        "CPX501"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx501
     }
 
     fn name(&self) -> &str {
@@ -48,7 +48,7 @@ impl LinterRule for ExcessiveSheetCountsRule {
 
         if sheet_count > self.threshold {
             violations.push(Violation::new(
-                self.id(),
+                RuleId::Cpx501,
                 ViolationScope::Book,
                 format!(
                     "Workbook has {} sheets (threshold: {})",
@@ -75,6 +75,7 @@ mod tests {
         for i in 0..60 {
             sheets.push(Sheet {
                 name: format!("Sheet{}", i),
+                sheet_index: i as u16,
                 cells: HashMap::new(),
                 used_range: None,
                 hidden_columns: Vec::new(),
@@ -98,7 +99,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "CPX501");
+        assert_eq!(violations[0].rule_id, RuleId::Cpx501);
         assert!(violations[0].message.contains("60 sheets"));
     }
 }

@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies legacy array formulas
 pub struct LegacyArrayRule;
 
 impl LinterRule for LegacyArrayRule {
-    fn id(&self) -> &str {
-        "VUL605"
+    fn id(&self) -> RuleId {
+        RuleId::Vul605
     }
 
     fn name(&self) -> &str {

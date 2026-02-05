@@ -5,7 +5,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::{CellValue, Workbook};
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 
 /// Rule that detects inconsistent date formats within contiguous ranges.
 pub struct InconsistentDateFormatRule {
@@ -51,8 +51,8 @@ impl InconsistentDateFormatRule {
 }
 
 impl LinterRule for InconsistentDateFormatRule {
-    fn id(&self) -> &str {
-        "DATA703"
+    fn id(&self) -> RuleId {
+        RuleId::Data703
     }
 
     fn name(&self) -> &str {
@@ -93,9 +93,9 @@ impl LinterRule for InconsistentDateFormatRule {
                         && normalized_fmt != required_format.replace('\\', "")
                     {
                         violations.push(Violation::new(
-                            self.id(),
+                            RuleId::Data703,
                             ViolationScope::Cell(
-                                sheet.name.clone(),
+                                sheet.sheet_index,
                                 crate::violation::CellReference {
                                     row: *row,
                                     col: *col,
@@ -159,6 +159,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 3)),
             hidden_columns: vec![],

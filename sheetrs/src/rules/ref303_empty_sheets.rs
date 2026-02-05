@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -12,8 +12,8 @@ use std::collections::HashSet;
 pub struct EmptySheetsRule;
 
 impl LinterRule for EmptySheetsRule {
-    fn id(&self) -> &str {
-        "REF303"
+    fn id(&self) -> RuleId {
+        RuleId::Ref303
     }
 
     fn name(&self) -> &str {
@@ -111,7 +111,7 @@ impl LinterRule for EmptySheetsRule {
             // PERF005: Report ONLY if empty (has_content == false), NOT referenced, and NO formulas.
             if !is_only_sheet && !is_referenced && !has_formulas && !has_content {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Ref303,
                     ViolationScope::Book,
                     format!("Sheet '{}' is completely empty and unused", sheet.name),
                     Severity::Warning,
@@ -145,6 +145,7 @@ mod tests {
 
         let sheet1 = Sheet {
             name: "Main".to_string(),
+            sheet_index: 0,
             cells: cells1,
             used_range: Some((1, 1)),
             ..Default::default()
@@ -163,6 +164,7 @@ mod tests {
         );
         let sheet2 = Sheet {
             name: "UnusedData".to_string(),
+            sheet_index: 0,
             cells: cells2,
             used_range: Some((1, 1)),
             ..Default::default()
@@ -171,6 +173,7 @@ mod tests {
         // Empty unused sheet (Should be PERF005)
         let sheet3 = Sheet {
             name: "Empty".to_string(),
+            sheet_index: 0,
             cells: HashMap::new(),
             used_range: None,
             ..Default::default()
@@ -186,7 +189,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF303");
+        assert_eq!(violations[0].rule_id, RuleId::Ref303);
         assert!(violations[0].message.contains("Empty"));
         assert!(!violations[0].message.contains("UnusedData"));
     }
@@ -206,6 +209,7 @@ mod tests {
 
         let sheet1 = Sheet {
             name: "Main".to_string(),
+            sheet_index: 0,
             cells: cells1,
             used_range: Some((1, 1)),
             ..Default::default()
@@ -213,6 +217,7 @@ mod tests {
 
         let sheet2 = Sheet {
             name: "HiddenEmpty".to_string(),
+            sheet_index: 0,
             cells: HashMap::new(), // Empty
             used_range: None,
             ..Default::default()
@@ -241,7 +246,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF303");
+        assert_eq!(violations[0].rule_id, RuleId::Ref303);
         assert!(violations[0].message.contains("HiddenEmpty"));
     }
 }

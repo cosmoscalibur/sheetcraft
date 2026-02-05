@@ -2,17 +2,72 @@
 
 use super::*;
 use crate::config::LinterConfig;
+use crate::violation::RuleId;
 use std::collections::HashSet;
 
 /// List of rule IDs that are active by default
-pub const DEFAULT_ACTIVE_RULES: &[&str] = &[
-    "ERR101", "ERR102", "ERR103", "CALC201", "CALC202", "CALC203", "CALC204", "CALC205", "REF301",
-    "REF302", "REF303", "REF304", "REF305", "REF306", "REF307", "REF308", "REF309", "REF310",
-    "REF311", "INT401", "INT402", "INT403", "CPX501", "CPX502", "CPX503", "CPX504", "CPX505",
-    "CPX506", "CPX507", "CPX508", "CPX509", "VUL601", "VUL602", "VUL603", "VUL604", "VUL605",
-    "VUL606", "VUL607", "DATA701", "DATA702", "DATA703", "DATA704", "DATA705", "DATA706",
-    "DATA707", "DATA708", "EXT801", "EXT802", "EXT803", "EXT804", "EXT805", "HID901", "HID902",
-    "HID903", "HID904", "HID905", "HID906", "FILE1001", "FILE1002", "FILE1003", "VBA1101",
+pub const DEFAULT_ACTIVE_RULES: &[RuleId] = &[
+    RuleId::Err101,
+    RuleId::Err102,
+    RuleId::Err103,
+    RuleId::Calc201,
+    RuleId::Calc202,
+    RuleId::Calc203,
+    RuleId::Calc204,
+    RuleId::Calc205,
+    RuleId::Ref301,
+    RuleId::Ref302,
+    RuleId::Ref303,
+    RuleId::Ref304,
+    RuleId::Ref305,
+    RuleId::Ref306,
+    RuleId::Ref307,
+    RuleId::Ref308,
+    RuleId::Ref309,
+    RuleId::Ref310,
+    RuleId::Ref311,
+    RuleId::Int401,
+    RuleId::Int402,
+    RuleId::Int403,
+    RuleId::Cpx501,
+    RuleId::Cpx502,
+    RuleId::Cpx503,
+    RuleId::Cpx504,
+    RuleId::Cpx505,
+    RuleId::Cpx506,
+    RuleId::Cpx507,
+    RuleId::Cpx508,
+    RuleId::Cpx509,
+    RuleId::Vul601,
+    RuleId::Vul602,
+    RuleId::Vul603,
+    RuleId::Vul604,
+    RuleId::Vul605,
+    RuleId::Vul606,
+    RuleId::Vul607,
+    RuleId::Data701,
+    RuleId::Data702,
+    RuleId::Data703,
+    RuleId::Data704,
+    RuleId::Data705,
+    RuleId::Data706,
+    RuleId::Data707,
+    RuleId::Data708,
+    RuleId::Ext801,
+    RuleId::Ext802,
+    RuleId::Ext803,
+    RuleId::Ext804,
+    RuleId::Ext805,
+    RuleId::Hid901,
+    RuleId::Hid902,
+    RuleId::Hid903,
+    RuleId::Hid904,
+    RuleId::Hid905,
+    RuleId::Hid906,
+    RuleId::File1001,
+    RuleId::File1002,
+    RuleId::File1003,
+    RuleId::Vba1101,
 ];
 
 /// Get all valid configuration tokens (Rule IDs, Category Prefixes, "ALL")
@@ -45,7 +100,7 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     all_rules
         .into_iter()
         .filter(|rule| {
-            let is_enabled_in_config = config.is_rule_enabled(rule.id());
+            let is_enabled_in_config = config.is_rule_enabled(rule.id().as_str());
 
             if config.global.enabled_rules.is_empty() {
                 DEFAULT_ACTIVE_RULES.contains(&rule.id()) && is_enabled_in_config
@@ -153,14 +208,14 @@ mod tests {
         let mut config = LinterConfig::default();
         config.global.enabled_rules.insert("ERR".to_string());
         let enabled = create_enabled_rules(&config);
-        assert!(enabled.iter().any(|r| r.id() == "ERR102"));
+        assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
     }
 
     #[test]
     fn test_default_activation() {
         let config = LinterConfig::default();
         let enabled = create_enabled_rules(&config);
-        assert!(enabled.iter().any(|r| r.id() == "ERR101"));
-        assert!(enabled.iter().any(|r| r.id() == "ERR102"));
+        assert!(enabled.iter().any(|r| r.id() == RuleId::Err101));
+        assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
     }
 }

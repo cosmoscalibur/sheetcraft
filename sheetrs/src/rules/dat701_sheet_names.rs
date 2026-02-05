@@ -3,7 +3,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Default)]
@@ -24,8 +24,8 @@ impl NonDescriptiveSheetNameRule {
 }
 
 impl LinterRule for NonDescriptiveSheetNameRule {
-    fn id(&self) -> &str {
-        "DATA701"
+    fn id(&self) -> RuleId {
+        RuleId::Data701
     }
 
     fn name(&self) -> &str {
@@ -49,7 +49,7 @@ impl LinterRule for NonDescriptiveSheetNameRule {
             for pattern in &patterns {
                 if normalized_name.contains(pattern) {
                     violations.push(Violation::new(
-                        self.id(),
+                        RuleId::Data701,
                         ViolationScope::Book,
                         format!(
                             "Non-descriptive sheet name '{}' contains pattern '{}'",
@@ -106,7 +106,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2);
-        assert_eq!(violations[0].rule_id, "DATA701");
+        assert_eq!(violations[0].rule_id, RuleId::Data701);
         assert!(violations[0].message.contains("Sheet1"));
         assert!(violations[1].message.contains("Copy of Data"));
     }

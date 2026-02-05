@@ -4,9 +4,7 @@ use anyhow::Result;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use std::collections::HashSet;
-use std::fs::File;
 use std::io::{Cursor, Read, Seek, Write};
-use std::path::Path;
 use zip::{ZipArchive, ZipWriter, write::FileOptions};
 
 /// Struct used to define modifications to be applied to a workbook

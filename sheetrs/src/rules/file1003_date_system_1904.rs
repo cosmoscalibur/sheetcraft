@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies usage of the 1904 date system
 pub struct DateSystem1904Rule;
 
 impl LinterRule for DateSystem1904Rule {
-    fn id(&self) -> &str {
-        "FILE1003"
+    fn id(&self) -> RuleId {
+        RuleId::File1003
     }
 
     fn name(&self) -> &str {

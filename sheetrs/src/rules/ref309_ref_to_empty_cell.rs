@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas referencing empty cells
 pub struct RefToEmptyCellRule;
 
 impl LinterRule for RefToEmptyCellRule {
-    fn id(&self) -> &str {
-        "REF309"
+    fn id(&self) -> RuleId {
+        RuleId::Ref309
     }
 
     fn name(&self) -> &str {

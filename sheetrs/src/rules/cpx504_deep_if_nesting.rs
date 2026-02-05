@@ -5,7 +5,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
 
@@ -29,8 +29,8 @@ impl Default for DeepIfNestingRule {
 }
 
 impl LinterRule for DeepIfNestingRule {
-    fn id(&self) -> &str {
-        "CPX504"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx504
     }
 
     fn name(&self) -> &str {
@@ -64,8 +64,8 @@ impl LinterRule for DeepIfNestingRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Cpx504,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Deeply nested IF statements (>{} levels) in range: {}. Consider using lookup tables or IFS function.",
                             self.max_if_nesting, range_str
@@ -213,6 +213,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -235,7 +236,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "CPX504");
+        assert_eq!(violations[0].rule_id, RuleId::Cpx504);
         assert!(violations[0].message.contains(">5 levels"));
     }
 
@@ -255,6 +256,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),

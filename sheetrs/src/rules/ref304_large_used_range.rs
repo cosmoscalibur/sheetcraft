@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects excessively large used ranges.
@@ -22,8 +22,8 @@ impl LargeUsedRangeRule {
 }
 
 impl LinterRule for LargeUsedRangeRule {
-    fn id(&self) -> &str {
-        "REF304"
+    fn id(&self) -> RuleId {
+        RuleId::Ref304
     }
 
     fn name(&self) -> &str {
@@ -70,8 +70,8 @@ impl LinterRule for LargeUsedRangeRule {
                         let last_data_ref = CellReference::new(last_data_row, last_data_col);
 
                         violations.push(Violation::new(
-                            self.id(),
-                            ViolationScope::Sheet(sheet.name.clone()),
+                            RuleId::Ref304,
+                            ViolationScope::Sheet(sheet.sheet_index),
                             format!(
                                 "Used range extends beyond data: last used cell {}, last data/formula cell {} (threshold: {}/{} rows/cols)",
                                 last_used_ref, last_data_ref, THRESHOLD_ROWS, THRESHOLD_COLS
@@ -119,6 +119,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((50, 30)),
             ..Default::default()
@@ -134,6 +135,6 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF304");
+        assert_eq!(violations[0].rule_id, RuleId::Ref304);
     }
 }

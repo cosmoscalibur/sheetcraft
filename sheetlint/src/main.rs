@@ -66,8 +66,8 @@ fn main() -> Result<()> {
     // Create linter and run
     let linter = Linter::with_config(config);
 
-    let violations = linter
-        .lint_file(&cli.file)
+    let (violations, workbook) = linter
+        .lint_file_with_workbook(&cli.file)
         .with_context(|| format!("Failed to lint file: {}", cli.file.display()))?;
 
     // Filter violations if needed
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
     // Output results
     match cli.format {
         OutputFormat::Human => {
-            formatter::print_human(&cli.file, &violations);
+            formatter::print_human(&cli.file, &violations, &workbook);
         }
         OutputFormat::Json => {
             formatter::print_json(&cli.file, &violations)?;

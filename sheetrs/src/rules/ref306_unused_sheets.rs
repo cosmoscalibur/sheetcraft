@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -12,8 +12,8 @@ use std::collections::HashSet;
 pub struct UnusedSheetsRule;
 
 impl LinterRule for UnusedSheetsRule {
-    fn id(&self) -> &str {
-        "REF306"
+    fn id(&self) -> RuleId {
+        RuleId::Ref306
     }
 
     fn name(&self) -> &str {
@@ -106,7 +106,7 @@ impl LinterRule for UnusedSheetsRule {
             // even if they contain formulas, as they are effectively dead code.
             if !is_only_sheet && !is_referenced && has_content && (!has_formulas || is_hidden) {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Ref306,
                     ViolationScope::Book,
                     format!(
                         "Sheet '{}' is not referenced by any other sheet{}",
@@ -148,6 +148,7 @@ mod tests {
 
         let sheet1 = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells: cells1,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -173,6 +174,7 @@ mod tests {
 
         let sheet2 = Sheet {
             name: "Sheet2".to_string(),
+            sheet_index: 0,
             cells: cells2,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -198,6 +200,7 @@ mod tests {
 
         let sheet3 = Sheet {
             name: "Sheet3".to_string(),
+            sheet_index: 0,
             cells: cells3,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -221,7 +224,7 @@ mod tests {
 
         // Sheet3 should be reported as unused
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF306");
+        assert_eq!(violations[0].rule_id, RuleId::Ref306);
         assert!(violations[0].message.contains("Sheet3"));
     }
 }

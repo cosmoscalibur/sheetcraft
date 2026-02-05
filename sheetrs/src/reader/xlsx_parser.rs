@@ -286,9 +286,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
         let sheet_names = self.get_sheet_names()?;
         let hidden_sheets = self.read_hidden_sheets()?;
 
-        for name in sheet_names {
+        for (idx, name) in sheet_names.into_iter().enumerate() {
             let path = get_xlsx_sheet_path(self.archive, &name)?;
-            let mut sheet = Sheet::new(name.clone());
+            let sheet_index = idx as u16;
+            let mut sheet = Sheet::new(name.clone(), sheet_index);
             sheet.sheet_path = Some(path.clone());
             sheet.visible = !hidden_sheets.contains(&name);
 

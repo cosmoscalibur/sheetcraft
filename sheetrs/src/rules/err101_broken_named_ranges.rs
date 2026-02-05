@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that identifies broken named ranges (references to invalid/deleted locations)
@@ -13,8 +13,8 @@ use anyhow::Result;
 pub struct BrokenNamedRangesRule;
 
 impl LinterRule for BrokenNamedRangesRule {
-    fn id(&self) -> &str {
-        "ERR101"
+    fn id(&self) -> RuleId {
+        RuleId::Err101
     }
 
     fn name(&self) -> &str {
@@ -32,7 +32,7 @@ impl LinterRule for BrokenNamedRangesRule {
         for (name, reference) in &workbook.defined_names {
             if is_broken_reference(workbook, reference) {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Err101,
                     ViolationScope::Book,
                     format!("Named range '{}' has broken reference: {}", name, reference),
                     Severity::Error,
@@ -62,6 +62,7 @@ mod tests {
     fn test_broken_named_ranges() {
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells: HashMap::new(),
             used_range: None,
             ..Default::default()
@@ -83,7 +84,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "ERR101");
+        assert_eq!(violations[0].rule_id, RuleId::Err101);
         assert!(violations[0].message.contains("BrokenRange"));
     }
 }

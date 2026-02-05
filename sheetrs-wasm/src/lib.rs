@@ -68,12 +68,13 @@ pub fn lint_workbook(
         .map(|r| (r.id().to_string(), r.name().to_string()))
         .collect();
 
-    Ok(format_violations_human(&violations, &rule_names))
+    Ok(format_violations_human(&violations, &rule_names, &workbook))
 }
 
 fn format_violations_human(
     violations: &[Violation],
     rule_names: &HashMap<String, String>,
+    workbook: &sheetrs::reader::Workbook,
 ) -> String {
     let mut output = String::new();
 
@@ -90,15 +91,25 @@ fn format_violations_human(
     for violation in violations {
         match &violation.scope {
             ViolationScope::Book => book_violations.push(violation),
-            ViolationScope::Sheet(sheet) => {
+            ViolationScope::Sheet(sheet_idx) => {
+                // Lookup sheet name from index
+                let sheet_name = workbook
+                    .sheet_name_by_index(*sheet_idx)
+                    .unwrap_or("Unknown Sheet")
+                    .to_string();
                 sheet_violations
-                    .entry(sheet.clone())
+                    .entry(sheet_name)
                     .or_default()
                     .push(violation);
             }
-            ViolationScope::Cell(sheet, cell_ref) => {
+            ViolationScope::Cell(sheet_idx, cell_ref) => {
+                // Lookup sheet name from index
+                let sheet_name = workbook
+                    .sheet_name_by_index(*sheet_idx)
+                    .unwrap_or("Unknown Sheet")
+                    .to_string();
                 cell_violations
-                    .entry(sheet.clone())
+                    .entry(sheet_name)
                     .or_default()
                     .entry(cell_ref.to_string())
                     .or_default()
@@ -178,14 +189,15 @@ fn format_violation(
         Severity::Info => "ℹ️ ",
     };
 
+    let rule_id_str = violation.rule_id.as_str();
     let rule_name = rule_names
-        .get(&violation.rule_id)
+        .get(rule_id_str)
         .map(|s| s.as_str())
         .unwrap_or("Unknown rule");
 
     format!(
         "{}{} [{}] {} - {}\n",
-        indent_str, severity_icon, violation.rule_id, rule_name, violation.message
+        indent_str, severity_icon, rule_id_str, rule_name, violation.message
     )
 }
 

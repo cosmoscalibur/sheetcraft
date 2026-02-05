@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -12,8 +12,8 @@ use std::collections::HashSet;
 pub struct UnusedNamedRangesRule;
 
 impl LinterRule for UnusedNamedRangesRule {
-    fn id(&self) -> &str {
-        "REF301"
+    fn id(&self) -> RuleId {
+        RuleId::Ref301
     }
 
     fn name(&self) -> &str {
@@ -53,7 +53,7 @@ impl LinterRule for UnusedNamedRangesRule {
         for name in named_ranges {
             if !used_names.contains(name) {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Ref301,
                     ViolationScope::Book,
                     format!("Named range '{}' is defined but never used", name),
                     Severity::Warning,
@@ -87,6 +87,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             ..Default::default()
@@ -107,7 +108,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF301");
+        assert_eq!(violations[0].rule_id, RuleId::Ref301);
         assert!(violations[0].message.contains("UnusedRange"));
     }
 }

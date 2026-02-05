@@ -2,12 +2,12 @@
 
 use anyhow::Result;
 use colored::*;
-use sheetrs::{Severity, Violation, ViolationScope};
+use sheetrs::{Severity, Violation, ViolationScope, reader::Workbook};
 use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Print violations in human-readable format with colors and hierarchy
-pub fn print_human(file_path: &Path, violations: &[Violation]) {
+pub fn print_human(file_path: &Path, violations: &[Violation], workbook: &Workbook) {
     println!("{}", format!("Linting: {}", file_path.display()).bold());
     println!();
 
@@ -19,18 +19,29 @@ pub fn print_human(file_path: &Path, violations: &[Violation]) {
     // Group violations by scope for hierarchical display
     let mut book_violations = Vec::new();
     // BTreeMap<SheetName, (SheetLevelViolations, BTreeMap<CellRef, CellLevelViolations>)>
+    #[allow(clippy::type_complexity)]
     let mut sheet_data: BTreeMap<String, (Vec<&Violation>, BTreeMap<String, Vec<&Violation>>)> =
         BTreeMap::new();
 
     for violation in violations {
         match &violation.scope {
             ViolationScope::Book => book_violations.push(violation),
-            ViolationScope::Sheet(sheet) => {
-                let (sheet_v, _) = sheet_data.entry(sheet.clone()).or_default();
+            ViolationScope::Sheet(sheet_idx) => {
+                // Lookup sheet name from index
+                let sheet_name = workbook
+                    .sheet_name_by_index(*sheet_idx)
+                    .unwrap_or("Unknown Sheet")
+                    .to_string();
+                let (sheet_v, _) = sheet_data.entry(sheet_name).or_default();
                 sheet_v.push(violation);
             }
-            ViolationScope::Cell(sheet, cell_ref) => {
-                let (_, cell_v) = sheet_data.entry(sheet.clone()).or_default();
+            ViolationScope::Cell(sheet_idx, cell_ref) => {
+                // Lookup sheet name from index
+                let sheet_name = workbook
+                    .sheet_name_by_index(*sheet_idx)
+                    .unwrap_or("Unknown Sheet")
+                    .to_string();
+                let (_, cell_v) = sheet_data.entry(sheet_name).or_default();
                 cell_v
                     .entry(cell_ref.to_string())
                     .or_default()
@@ -105,7 +116,7 @@ fn print_violation(violation: &Violation, indent: usize) {
         "{}{} [{}] {}",
         indent_str,
         severity_str,
-        violation.rule_id.bright_black(),
+        violation.rule_id.as_str().bright_black(),
         violation.message
     );
 }

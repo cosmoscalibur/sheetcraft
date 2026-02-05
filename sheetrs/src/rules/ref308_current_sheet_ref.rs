@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas with redundant current sheet references
 pub struct CurrentSheetRefRule;
 
 impl LinterRule for CurrentSheetRefRule {
-    fn id(&self) -> &str {
-        "REF308"
+    fn id(&self) -> RuleId {
+        RuleId::Ref308
     }
 
     fn name(&self) -> &str {

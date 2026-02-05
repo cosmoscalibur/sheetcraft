@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
@@ -40,8 +40,8 @@ impl Default for WholeColumnRowRefsRule {
 }
 
 impl LinterRule for WholeColumnRowRefsRule {
-    fn id(&self) -> &str {
-        "REF307"
+    fn id(&self) -> RuleId {
+        RuleId::Ref307
     }
 
     fn name(&self) -> &str {
@@ -81,8 +81,8 @@ impl LinterRule for WholeColumnRowRefsRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref307,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Whole-column reference (e.g., A:A) found in range: {}. Use bounded ranges for better performance.",
                             range_str
@@ -99,8 +99,8 @@ impl LinterRule for WholeColumnRowRefsRule {
                 for range in ranges {
                     let range_str = format_single_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Ref307,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Whole-row reference (e.g., 1:1) found in range: {}. Use bounded ranges for better performance.",
                             range_str
@@ -200,6 +200,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -222,7 +223,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF307");
+        assert_eq!(violations[0].rule_id, RuleId::Ref307);
         assert!(violations[0].message.contains("Whole-column"));
     }
 
@@ -241,6 +242,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),
@@ -263,7 +265,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF307");
+        assert_eq!(violations[0].rule_id, RuleId::Ref307);
         assert!(violations[0].message.contains("Whole-row"));
     }
 
@@ -282,6 +284,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             hidden_columns: Vec::new(),

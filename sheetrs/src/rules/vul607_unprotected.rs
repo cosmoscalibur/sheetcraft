@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies unprotected formulas
 pub struct UnprotectedRule;
 
 impl LinterRule for UnprotectedRule {
-    fn id(&self) -> &str {
-        "VUL607"
+    fn id(&self) -> RuleId {
+        RuleId::Vul607
     }
 
     fn name(&self) -> &str {

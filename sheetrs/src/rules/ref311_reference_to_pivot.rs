@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies direct references to pivot table data
 pub struct ReferenceToPivotRule;
 
 impl LinterRule for ReferenceToPivotRule {
-    fn id(&self) -> &str {
-        "REF311"
+    fn id(&self) -> RuleId {
+        RuleId::Ref311
     }
 
     fn name(&self) -> &str {

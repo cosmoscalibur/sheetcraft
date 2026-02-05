@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies approximate lookup functions
 pub struct ApproximateLookupRule;
 
 impl LinterRule for ApproximateLookupRule {
-    fn id(&self) -> &str {
-        "CALC204"
+    fn id(&self) -> RuleId {
+        RuleId::Calc204
     }
 
     fn name(&self) -> &str {

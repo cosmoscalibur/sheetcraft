@@ -14,7 +14,7 @@ use std::path::Path;
 
 pub use config::LinterConfig;
 pub use rules::LinterRule;
-pub use violation::{Severity, Violation, ViolationScope};
+pub use violation::{RuleId, Severity, Violation, ViolationScope};
 
 /// Main linter interface
 pub struct Linter {
@@ -40,6 +40,19 @@ impl Linter {
         self.lint_workbook(&workbook)
     }
 
+    /// Lint a spreadsheet file and return both violations and workbook
+    ///
+    /// This is useful when the consumer needs to resolve sheet indices
+    /// to sheet names for display purposes.
+    pub fn lint_file_with_workbook<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(Vec<Violation>, reader::Workbook)> {
+        let workbook = reader::read_workbook(path)?;
+        let violations = self.lint_workbook(&workbook)?;
+        Ok((violations, workbook))
+    }
+
     /// Lint a workbook and return violations
     pub fn lint_workbook(&self, workbook: &reader::Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
@@ -49,9 +62,14 @@ impl Linter {
 
             // Filter violations based on sheet configuration
             for violation in rule_violations {
-                let enabled = if let Some(sheet_name) = violation.scope.sheet_name() {
-                    self.config
-                        .is_rule_enabled_for_sheet(&violation.rule_id, sheet_name)
+                let enabled = if let Some(sheet_idx) = violation.scope.sheet_index() {
+                    // Look up sheet name for config filtering
+                    if let Some(sheet_name) = workbook.sheet_name_by_index(sheet_idx) {
+                        self.config
+                            .is_rule_enabled_for_sheet(violation.rule_id.as_str(), sheet_name)
+                    } else {
+                        true // Unknown sheet, allow the violation
+                    }
                 } else {
                     true
                 };

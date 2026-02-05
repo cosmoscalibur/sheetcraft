@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -20,8 +20,8 @@ fn normalize_sheet_name(name: &str) -> String {
 }
 
 impl LinterRule for DuplicateSheetNamesRule {
-    fn id(&self) -> &str {
-        "REF302"
+    fn id(&self) -> RuleId {
+        RuleId::Ref302
     }
 
     fn name(&self) -> &str {
@@ -49,7 +49,7 @@ impl LinterRule for DuplicateSheetNamesRule {
         for (_normalized, variants) in name_map {
             if variants.len() > 1 {
                 violations.push(Violation::new(
-                    self.id(),
+                    RuleId::Ref302,
                     ViolationScope::Book,
                     format!("Confusingly similar sheet names: {}", variants.join(", ")),
                     Severity::Warning,
@@ -101,7 +101,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "REF302");
+        assert_eq!(violations[0].rule_id, RuleId::Ref302);
         assert!(violations[0].message.contains("Data"));
         assert!(violations[0].message.contains("data"));
     }

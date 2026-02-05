@@ -3,7 +3,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,8 +64,8 @@ impl Default for WebUrlsRule {
 }
 
 impl LinterRule for WebUrlsRule {
-    fn id(&self) -> &str {
-        "EXT803"
+    fn id(&self) -> RuleId {
+        RuleId::Ext803
     }
 
     fn name(&self) -> &str {
@@ -119,8 +119,8 @@ impl LinterRule for WebUrlsRule {
                             )
                         };
                         violations.push(Violation::new(
-                            self.id(),
-                            ViolationScope::Sheet(sheet.name.clone()),
+                            RuleId::Ext803,
+                            ViolationScope::Sheet(sheet.sheet_index),
                             message,
                             Severity::Warning,
                         ));
@@ -272,6 +272,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             ..Default::default()
@@ -287,7 +288,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "EXT803");
+        assert_eq!(violations[0].rule_id, RuleId::Ext803);
         assert!(violations[0].message.contains("https://example.com"));
         assert!(violations[0].message.contains("range"));
     }
@@ -309,6 +310,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
             ..Default::default()

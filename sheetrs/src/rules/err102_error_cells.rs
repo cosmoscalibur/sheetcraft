@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that identifies cells containing error values
 pub struct ErrorCellsRule;
 
 impl LinterRule for ErrorCellsRule {
-    fn id(&self) -> &str {
-        "ERR102"
+    fn id(&self) -> RuleId {
+        RuleId::Err102
     }
 
     fn name(&self) -> &str {
@@ -50,9 +50,9 @@ impl LinterRule for ErrorCellsRule {
 
                 if let Some(error_value) = error_found {
                     violations.push(Violation::new(
-                        self.id(),
+                        RuleId::Err102,
                         ViolationScope::Cell(
-                            sheet.name.clone(),
+                            sheet.sheet_index,
                             CellReference::new(cell.row, cell.col),
                         ),
                         format!("Cell contains error value: {}", error_value),
@@ -97,6 +97,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 1)),
             hidden_columns: Vec::new(),
@@ -119,7 +120,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "ERR102");
+        assert_eq!(violations[0].rule_id, RuleId::Err102);
         assert!(violations[0].message.contains("#DIV/0!"));
     }
 
@@ -148,6 +149,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 1)),
             hidden_columns: Vec::new(),

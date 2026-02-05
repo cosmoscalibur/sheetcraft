@@ -1139,7 +1139,9 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                 }
                             }
                         }
-                        let mut new_sheet = Sheet::new(name.clone());
+                        // Assign sheet_index based on the current count of sheets parsed
+                        let sheet_index = sheets.len() as u16;
+                        let mut new_sheet = Sheet::new(name.clone(), sheet_index);
                         // Check if this sheet's style is in hidden_styles
                         let is_hidden =
                             !style_name.is_empty() && hidden_styles.contains(&style_name);

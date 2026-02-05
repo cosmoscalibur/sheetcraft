@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas interrupted by a different formula type
 pub struct InterruptedByOtherRule;
 
 impl LinterRule for InterruptedByOtherRule {
-    fn id(&self) -> &str {
-        "INT403"
+    fn id(&self) -> RuleId {
+        RuleId::Int403
     }
 
     fn name(&self) -> &str {

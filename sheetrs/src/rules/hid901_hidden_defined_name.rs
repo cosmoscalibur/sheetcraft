@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies hidden defined names
 pub struct HiddenDefinedNameRule;
 
 impl LinterRule for HiddenDefinedNameRule {
-    fn id(&self) -> &str {
-        "HID901"
+    fn id(&self) -> RuleId {
+        RuleId::Hid901
     }
 
     fn name(&self) -> &str {

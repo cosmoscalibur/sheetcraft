@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies formulas referencing cells with errors
 pub struct RefToErrorRule;
 
 impl LinterRule for RefToErrorRule {
-    fn id(&self) -> &str {
-        "ERR103"
+    fn id(&self) -> RuleId {
+        RuleId::Err103
     }
 
     fn name(&self) -> &str {

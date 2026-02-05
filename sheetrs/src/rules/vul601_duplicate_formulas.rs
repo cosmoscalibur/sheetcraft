@@ -2,7 +2,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{CellReference, Severity, Violation, ViolationScope};
+use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -13,8 +13,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub struct DuplicateFormulasRule;
 
 impl LinterRule for DuplicateFormulasRule {
-    fn id(&self) -> &str {
-        "VUL601"
+    fn id(&self) -> RuleId {
+        RuleId::Vul601
     }
 
     fn name(&self) -> &str {
@@ -62,8 +62,8 @@ impl LinterRule for DuplicateFormulasRule {
                     };
 
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Vul601,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!(
                             "Formula '{}' is duplicated {} times in ranges: {}. Consider using named ranges or helper cells.",
                             display_formula, cells.len(), range_list
@@ -181,6 +181,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((3, 1)),
             hidden_columns: Vec::new(),
@@ -203,7 +204,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "VUL601");
+        assert_eq!(violations[0].rule_id, RuleId::Vul601);
         assert!(violations[0].message.contains("duplicated 3 times"));
     }
 
@@ -231,6 +232,7 @@ mod tests {
 
         let sheet = Sheet {
             name: "Sheet1".to_string(),
+            sheet_index: 0,
             cells,
             used_range: Some((2, 1)),
             hidden_columns: Vec::new(),

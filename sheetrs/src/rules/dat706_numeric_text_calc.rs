@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies numeric string calculations
 pub struct NumericTextCalcRule;
 
 impl LinterRule for NumericTextCalcRule {
-    fn id(&self) -> &str {
-        "DATA706"
+    fn id(&self) -> RuleId {
+        RuleId::Data706
     }
 
     fn name(&self) -> &str {

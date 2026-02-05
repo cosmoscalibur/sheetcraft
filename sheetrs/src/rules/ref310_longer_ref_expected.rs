@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies suspiciously short references
 pub struct LongerRefExpectedRule;
 
 impl LinterRule for LongerRefExpectedRule {
-    fn id(&self) -> &str {
-        "REF310"
+    fn id(&self) -> RuleId {
+        RuleId::Ref310
     }
 
     fn name(&self) -> &str {

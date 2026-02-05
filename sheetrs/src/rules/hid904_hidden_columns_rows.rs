@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 /// Rule that detects hidden columns and rows
 pub struct HiddenColumnsRowsRule;
 
 impl LinterRule for HiddenColumnsRowsRule {
-    fn id(&self) -> &str {
-        "HID904"
+    fn id(&self) -> RuleId {
+        RuleId::Hid904
     }
 
     fn name(&self) -> &str {
@@ -33,8 +33,8 @@ impl LinterRule for HiddenColumnsRowsRule {
                 for range in ranges {
                     let range_str = format_column_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Hid904,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!("Hidden columns: {}", range_str),
                         Severity::Warning,
                     ));
@@ -47,8 +47,8 @@ impl LinterRule for HiddenColumnsRowsRule {
                 for range in ranges {
                     let range_str = format_row_range(&range);
                     violations.push(Violation::new(
-                        self.id(),
-                        ViolationScope::Sheet(sheet.name.clone()),
+                        RuleId::Hid904,
+                        ViolationScope::Sheet(sheet.sheet_index),
                         format!("Hidden rows: {}", range_str),
                         Severity::Warning,
                     ));
@@ -144,6 +144,7 @@ mod tests {
             path: PathBuf::from("test.xlsx"),
             sheets: vec![Sheet {
                 name: "Sheet1".to_string(),
+                sheet_index: 0,
                 cells: HashMap::new(),
                 used_range: None,
                 hidden_columns: vec![0, 1, 2, 5], // A, B, C, F
@@ -162,7 +163,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2); // Two ranges: A:C and F
-        assert_eq!(violations[0].rule_id, "HID904");
+        assert_eq!(violations[0].rule_id, RuleId::Hid904);
         assert!(violations[0].message.contains("A:C"));
         assert!(violations[1].message.contains("F"));
     }
@@ -173,6 +174,7 @@ mod tests {
             path: PathBuf::from("test.xlsx"),
             sheets: vec![Sheet {
                 name: "Sheet1".to_string(),
+                sheet_index: 0,
                 cells: HashMap::new(),
                 used_range: None,
                 hidden_columns: Vec::new(),
@@ -191,7 +193,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2); // Two ranges: 1:3 and 11:12
-        assert_eq!(violations[0].rule_id, "HID904");
+        assert_eq!(violations[0].rule_id, RuleId::Hid904);
         assert!(violations[0].message.contains("1:3"));
         assert!(violations[1].message.contains("11:12"));
     }

@@ -5,7 +5,7 @@
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{Severity, Violation, ViolationScope};
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
 #[derive(Default)]
@@ -24,8 +24,8 @@ impl ExcessiveConditionalFormattingRule {
 }
 
 impl LinterRule for ExcessiveConditionalFormattingRule {
-    fn id(&self) -> &str {
-        "CPX503"
+    fn id(&self) -> RuleId {
+        RuleId::Cpx503
     }
 
     fn name(&self) -> &str {
@@ -58,8 +58,8 @@ impl LinterRule for ExcessiveConditionalFormattingRule {
                 };
 
                 violations.push(Violation::new(
-                    self.id(),
-                    ViolationScope::Sheet(sheet.name.clone()),
+                    RuleId::Cpx503,
+                    ViolationScope::Sheet(sheet.sheet_index),
                     format!(
                         "Sheet has {} conditional formatting rules (threshold: {}).{}",
                         cf_count, threshold, ranges_str

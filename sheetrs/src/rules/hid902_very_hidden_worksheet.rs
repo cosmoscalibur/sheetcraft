@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies standard hidden worksheets
 pub struct VeryHiddenWorksheetRule;
 
 impl LinterRule for VeryHiddenWorksheetRule {
-    fn id(&self) -> &str {
-        "HID902"
+    fn id(&self) -> RuleId {
+        RuleId::Hid902
     }
 
     fn name(&self) -> &str {

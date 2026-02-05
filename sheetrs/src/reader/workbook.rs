@@ -39,6 +39,17 @@ impl Workbook {
         self.sheets.iter().find(|s| s.name == name)
     }
 
+    /// Get sheet name by index
+    ///
+    /// Returns the sheet name for a given 0-based index.
+    /// This is useful for resolving ViolationScope which stores sheet_index.
+    pub fn sheet_name_by_index(&self, sheet_index: u16) -> Option<&str> {
+        self.sheets
+            .iter()
+            .find(|s| s.sheet_index == sheet_index)
+            .map(|s| s.name.as_str())
+    }
+
     /// Get all sheet names
     pub fn sheet_names(&self) -> Vec<&str> {
         self.sheets.iter().map(|s| s.name.as_str()).collect()
@@ -50,6 +61,9 @@ impl Workbook {
 pub struct Sheet {
     /// Name of the sheet
     pub name: String,
+    /// Zero-based index representing the order of appearance in the workbook.
+    /// This is assigned by the parser based on the sheet's position.
+    pub sheet_index: u16,
     /// Map of cell coordinates (row, col) to Cell data. 0-based indexing.
     pub cells: HashMap<(u32, u32), Cell>,
     /// The used range of the sheet: (max_row, max_col) inclusive. 0-based.
@@ -73,10 +87,11 @@ pub struct Sheet {
 }
 
 impl Sheet {
-    /// Create a new empty sheet with the given name
-    pub fn new(name: String) -> Self {
+    /// Create a new empty sheet with the given name and index
+    pub fn new(name: String, sheet_index: u16) -> Self {
         Self {
             name,
+            sheet_index,
             cells: HashMap::new(),
             used_range: None,
             hidden_columns: Vec::new(),

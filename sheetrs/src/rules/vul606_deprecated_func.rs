@@ -4,15 +4,15 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::reader::Workbook;
-use crate::violation::Violation;
+use crate::violation::{RuleId, Violation};
 use anyhow::Result;
 
 /// Rule that identifies deprecated functions
 pub struct DeprecatedFuncRule;
 
 impl LinterRule for DeprecatedFuncRule {
-    fn id(&self) -> &str {
-        "VUL606"
+    fn id(&self) -> RuleId {
+        RuleId::Vul606
     }
 
     fn name(&self) -> &str {
