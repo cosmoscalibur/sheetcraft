@@ -2,8 +2,8 @@
 //!
 //! Description: Merged cells cause issues with sorting, filtering, and structural integrity.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use crate::reader::{Sheet, Workbook};
 use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 
@@ -39,6 +39,28 @@ impl LinterRule for MergedCellsRule {
         }
 
         Ok(violations)
+    }
+}
+
+impl WalkerRule for MergedCellsRule {
+    fn id(&self) -> RuleId {
+        RuleId::Cpx502
+    }
+
+    fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+
+        for &(start_row, start_col, end_row, end_col) in &sheet.merged_cells {
+            let range_str = format_merged_range(start_row, start_col, end_row, end_col);
+            violations.push(Violation::new(
+                RuleId::Cpx502,
+                ViolationScope::Sheet(sheet.sheet_index),
+                format!("Merged cells in range: {}", range_str),
+                Severity::Warning,
+            ));
+        }
+
+        violations
     }
 }
 

@@ -2,8 +2,8 @@
 //!
 //! Description: Completely empty sheets with no content, formulas, or incoming references.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use crate::reader::{Sheet, Workbook};
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -120,6 +120,28 @@ impl LinterRule for EmptySheetsRule {
         }
 
         Ok(violations)
+    }
+}
+
+impl WalkerRule for EmptySheetsRule {
+    fn id(&self) -> RuleId {
+        RuleId::Ref303
+    }
+
+    fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        // Simple check: if cells is empty, it's an empty sheet
+        // Note: Full referenced_sheets logic is handled by the LinterRule check()
+        // Walker version uses cells.is_empty() as a quick first-pass detection
+        if sheet.cells.is_empty() {
+            vec![Violation::new(
+                RuleId::Ref303,
+                ViolationScope::Sheet(sheet.sheet_index),
+                format!("Sheet '{}' is completely empty", sheet.name),
+                Severity::Warning,
+            )]
+        } else {
+            Vec::new()
+        }
     }
 }
 

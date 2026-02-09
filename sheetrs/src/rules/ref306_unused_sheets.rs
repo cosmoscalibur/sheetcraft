@@ -2,7 +2,7 @@
 //!
 //! Description: Check for sheets that are not referenced by any other part of the workbook.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
@@ -123,6 +123,38 @@ impl LinterRule for UnusedSheetsRule {
         }
 
         Ok(violations)
+    }
+}
+
+impl WalkerRule for UnusedSheetsRule {
+    fn id(&self) -> RuleId {
+        RuleId::Ref306
+    }
+
+    fn on_workbook_end(&self, workbook: &Workbook, ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+
+        // Use referenced_sheets populated by calc202's on_cell
+        for sheet in &workbook.sheets {
+            let is_only_sheet = workbook.sheets.len() == 1;
+            let is_referenced = ctx.referenced_sheets.contains(&sheet.sheet_index);
+
+            // Walker version focuses on reference detection only
+            // Hidden/formula logic is in the legacy check() for full compatibility
+            if !is_only_sheet && !is_referenced {
+                violations.push(Violation::new(
+                    RuleId::Ref306,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    format!(
+                        "Sheet '{}' is not referenced by any other sheet",
+                        sheet.name
+                    ),
+                    Severity::Warning,
+                ));
+            }
+        }
+
+        violations
     }
 }
 

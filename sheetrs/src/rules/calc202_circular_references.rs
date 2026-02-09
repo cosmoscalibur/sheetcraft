@@ -2,8 +2,8 @@
 //!
 //! Description: Detects recursive dependency loops that prevent successful calculation.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet, Workbook};
 use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
 use anyhow::Result;
 use regex::Regex;
@@ -137,6 +137,133 @@ impl LinterRule for CircularReferenceRule {
 
         Ok(violations)
     }
+}
+
+impl WalkerRule for CircularReferenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::Calc202
+    }
+
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, ctx: &mut LinterContext) -> Vec<Violation> {
+        if let Some(formula) = cell.value.as_formula() {
+            let refs = extract_cell_references_walker(
+                formula,
+                &self.cell_ref_pattern,
+                sheet.sheet_index,
+                &ctx.name_to_index,
+            );
+
+            // Track referenced sheets for ref306
+            for (sheet_idx, _, _) in &refs {
+                ctx.referenced_sheets.insert(*sheet_idx);
+            }
+
+            ctx.cell_dependencies
+                .insert((sheet.sheet_index, cell.row, cell.col), refs);
+        }
+        Vec::new()
+    }
+
+    fn on_workbook_end(&self, workbook: &Workbook, ctx: &mut LinterContext) -> Vec<Violation> {
+        let cycles = find_cycles(&ctx.cell_dependencies);
+
+        // Build index-to-name map for violation messages
+        let index_to_name: HashMap<u16, &str> = workbook
+            .sheets
+            .iter()
+            .map(|s| (s.sheet_index, s.name.as_str()))
+            .collect();
+
+        let mut violations = Vec::new();
+        let mut reported_cells = HashSet::new();
+
+        for cycle in cycles {
+            let is_duplicate = cycle.iter().any(|c| reported_cells.contains(c));
+
+            if !is_duplicate {
+                for cell in &cycle {
+                    reported_cells.insert(*cell);
+                }
+
+                let path_str: Vec<String> = cycle
+                    .iter()
+                    .map(|(idx, r, c)| {
+                        let sheet_name = index_to_name.get(idx).copied().unwrap_or("Unknown");
+                        format!("{}!{}", sheet_name, CellReference::new(*r, *c))
+                    })
+                    .collect();
+
+                let full_path = format!("{} -> {}", path_str.join(" -> "), path_str[0]);
+
+                let (sheet_index, r, c) = &cycle[0];
+                let cell_ref = CellReference::new(*r, *c);
+
+                violations.push(Violation::new(
+                    RuleId::Calc202,
+                    ViolationScope::Cell(*sheet_index, cell_ref),
+                    format!("Circular reference detected: {}", full_path),
+                    Severity::Error,
+                ));
+            }
+        }
+
+        violations
+    }
+}
+
+/// Extract cell references for walker rules (uses HashMap<String, u16>)
+fn extract_cell_references_walker(
+    formula: &str,
+    pattern: &Regex,
+    current_sheet_index: u16,
+    name_to_index: &HashMap<String, u16>,
+) -> Vec<(u16, u32, u32)> {
+    let mut references = Vec::new();
+
+    for cap in pattern.captures_iter(formula) {
+        let sheet_index = if cap.get(1).is_some() {
+            if let Some(quoted) = cap.get(2) {
+                match name_to_index.get(quoted.as_str()).copied() {
+                    Some(idx) => idx,
+                    None => continue,
+                }
+            } else if let Some(unquoted) = cap.get(3) {
+                match name_to_index.get(unquoted.as_str()).copied() {
+                    Some(idx) => idx,
+                    None => continue,
+                }
+            } else {
+                current_sheet_index
+            }
+        } else {
+            current_sheet_index
+        };
+
+        if let (Some(col_match), Some(row_match)) = (cap.get(4), cap.get(5)) {
+            let col_str = col_match.as_str();
+            let row_str = row_match.as_str();
+
+            let (start_row, start_col) = match parse_components(row_str, col_str) {
+                Some(coords) => coords,
+                None => continue,
+            };
+
+            if let (Some(end_col_match), Some(end_row_match)) = (cap.get(6), cap.get(7)) {
+                let end_col_str = end_col_match.as_str();
+                let end_row_str = end_row_match.as_str();
+
+                if let Some((end_row, end_col)) = parse_components(end_row_str, end_col_str) {
+                    // Only track corner cells to prevent memory issues
+                    references.push((sheet_index, start_row, start_col));
+                    references.push((sheet_index, end_row, end_col));
+                }
+            } else {
+                references.push((sheet_index, start_row, start_col));
+            }
+        }
+    }
+
+    references
 }
 
 /// Extract cell references from a formula, resolving sheet names to indices.

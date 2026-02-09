@@ -2,7 +2,7 @@
 //!
 //! Description: Checks if the workbook has an excessive number of sheets, which complicates navigation.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
@@ -59,6 +59,31 @@ impl LinterRule for ExcessiveSheetCountsRule {
         }
 
         Ok(violations)
+    }
+}
+
+impl WalkerRule for ExcessiveSheetCountsRule {
+    fn id(&self) -> RuleId {
+        RuleId::Cpx501
+    }
+
+    fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+        let sheet_count = workbook.sheets.len() as u32;
+
+        if sheet_count > self.threshold {
+            violations.push(Violation::new(
+                RuleId::Cpx501,
+                ViolationScope::Book,
+                format!(
+                    "Workbook has {} sheets (threshold: {})",
+                    sheet_count, self.threshold
+                ),
+                Severity::Warning,
+            ));
+        }
+
+        violations
     }
 }
 

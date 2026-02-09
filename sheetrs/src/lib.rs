@@ -16,10 +16,14 @@ pub use config::LinterConfig;
 pub use rules::LinterRule;
 pub use violation::{RuleId, Severity, Violation, ViolationScope};
 
+use rules::WalkerRule;
+use rules::walker::WorkbookWalker;
+
 /// Main linter interface
 pub struct Linter {
     config: LinterConfig,
     rules: Vec<Box<dyn LinterRule>>,
+    walker_rules: Vec<Box<dyn WalkerRule>>,
 }
 
 impl Linter {
@@ -31,7 +35,12 @@ impl Linter {
     /// Create a new linter with custom configuration
     pub fn with_config(config: LinterConfig) -> Self {
         let rules = rules::registry::create_enabled_rules(&config);
-        Self { config, rules }
+        let walker_rules = rules::registry::create_enabled_walker_rules(&config);
+        Self {
+            config,
+            rules,
+            walker_rules,
+        }
     }
 
     /// Lint a spreadsheet file and return violations
@@ -57,18 +66,43 @@ impl Linter {
     pub fn lint_workbook(&self, workbook: &reader::Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
 
+        // Run walker rules in single pass
+        let walker_rules_cloned: Vec<Box<dyn WalkerRule>> = self
+            .walker_rules
+            .iter()
+            .map(|r| rules::registry::clone_walker_rule(r.as_ref(), &self.config))
+            .collect();
+        let walker = WorkbookWalker::new(workbook, walker_rules_cloned);
+        let walker_violations = walker.walk();
+
+        // Filter walker violations by sheet config
+        for violation in walker_violations {
+            let enabled = if let Some(sheet_idx) = violation.scope.sheet_index() {
+                if let Some(sheet_name) = workbook.sheet_name_by_index(sheet_idx) {
+                    self.config
+                        .is_rule_enabled_for_sheet(violation.rule_id.as_str(), sheet_name)
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+            if enabled {
+                violations.push(violation);
+            }
+        }
+
+        // Run legacy LinterRule checks
         for rule in &self.rules {
             let rule_violations = rule.check(workbook)?;
 
-            // Filter violations based on sheet configuration
             for violation in rule_violations {
                 let enabled = if let Some(sheet_idx) = violation.scope.sheet_index() {
-                    // Look up sheet name for config filtering
                     if let Some(sheet_name) = workbook.sheet_name_by_index(sheet_idx) {
                         self.config
                             .is_rule_enabled_for_sheet(violation.rule_id.as_str(), sheet_name)
                     } else {
-                        true // Unknown sheet, allow the violation
+                        true
                     }
                 } else {
                     true

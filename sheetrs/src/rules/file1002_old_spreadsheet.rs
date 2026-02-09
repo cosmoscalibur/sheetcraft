@@ -2,7 +2,7 @@
 //!
 //! Description: Detects temporal debt and risk of technological obsolescence.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Violation};
 use anyhow::Result;
@@ -26,5 +26,16 @@ impl LinterRule for OldSpreadsheetRule {
     fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
         // Placeholder implementation
         Ok(Vec::new())
+    }
+}
+
+impl WalkerRule for OldSpreadsheetRule {
+    fn id(&self) -> RuleId {
+        RuleId::File1002
+    }
+
+    fn on_workbook_start(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        // Placeholder implementation (matches check)
+        Vec::new()
     }
 }

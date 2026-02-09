@@ -1,6 +1,7 @@
 //! Linter rule system
 
 pub mod registry;
+pub mod walker;
 
 // Rule implementations - Excel Errors (1xx)
 pub mod err101_broken_named_ranges;
@@ -85,9 +86,55 @@ pub mod file1003_date_system_1904;
 // Rule implementations - VBA Issues (11xx)
 pub mod vba1101_has_macros;
 
-use crate::reader::Workbook;
+use crate::reader::{Cell, Sheet, Workbook};
 use crate::violation::{RuleId, Violation};
 use anyhow::Result;
+use std::collections::{HashMap, HashSet};
+
+/// Type alias for cell dependency graph: (SheetIndex, Row, Col) -> Vec<(SheetIndex, Row, Col)>
+pub type CellDependencyMap = HashMap<(u16, u32, u32), Vec<(u16, u32, u32)>>;
+
+/// Shared context for walker rules during single-pass execution
+#[derive(Default)]
+pub struct LinterContext {
+    /// Map sheet names to indices for reference resolution
+    pub name_to_index: HashMap<String, u16>,
+    /// Sheets referenced by formulas (populated by calc202, used by ref306)
+    pub referenced_sheets: HashSet<u16>,
+    /// Cell dependency graph for circular reference detection
+    pub cell_dependencies: CellDependencyMap,
+}
+
+/// Trait for optimized single-pass walker rules
+pub trait WalkerRule: Send + Sync {
+    /// Unique rule identifier
+    fn id(&self) -> RuleId;
+
+    /// Called once at the start of workbook processing
+    fn on_workbook_start(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        Vec::new()
+    }
+
+    /// Called at the start of each sheet
+    fn on_sheet_start(&self, _sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        Vec::new()
+    }
+
+    /// Called for each cell in the workbook
+    fn on_cell(&self, _sheet: &Sheet, _cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        Vec::new()
+    }
+
+    /// Called at the end of each sheet
+    fn on_sheet_end(&self, _sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        Vec::new()
+    }
+
+    /// Called once after all sheets have been processed
+    fn on_workbook_end(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        Vec::new()
+    }
+}
 
 /// Trait that all linter rules must implement
 pub trait LinterRule: Send + Sync {
