@@ -208,9 +208,9 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         Box::new(cpx502_merged_cells::MergedCellsRule),
         // Files & Settings (10xx)
-        Box::new(file1001_large_file_size::LargeFileSizeRule),
-        Box::new(file1002_old_spreadsheet::OldSpreadsheetRule),
-        Box::new(file1003_date_system_1904::DateSystem1904Rule),
+        Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
+        Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
+        Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
     ]
 }
 
@@ -240,9 +240,9 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
-        RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule),
-        RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule),
-        RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule),
+        RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
+        RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
+        RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
         _ => panic!("Unknown walker rule: {:?}", rule.id()),
     }
 }

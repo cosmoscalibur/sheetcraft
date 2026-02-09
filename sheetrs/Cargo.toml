@@ -18,6 +18,7 @@ quick-xml.workspace = true
 zip.workspace = true
 reqwest = { workspace = true, optional = true }
 regex.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [features]
 default = ["link-validation"]

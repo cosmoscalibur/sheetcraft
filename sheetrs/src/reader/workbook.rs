@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
+
 /// Represents an external workbook reference
 #[derive(Debug, Clone)]
 pub struct ExternalWorkbook {
@@ -31,6 +33,10 @@ pub struct Workbook {
     /// For XLSX: index N corresponds to [N+1] in formulas
     /// For ODS: index N corresponds to order of appearance in metadata
     pub external_workbooks: Vec<ExternalWorkbook>,
+    /// Last modification date (parsed from file metadata)
+    pub modified_date: Option<DateTime<Utc>>,
+    /// Whether the workbook uses the 1904 date system (legacy Mac compatibility)
+    pub date1904: bool,
 }
 
 impl Workbook {

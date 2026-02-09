@@ -42,6 +42,12 @@ pub trait WorkbookReader {
     /// For XLSX, this maps to the externalLink relations.
     /// For ODS, this maps to the order of appearance or explicit file references.
     fn read_external_workbooks(&mut self) -> Result<Vec<ExternalWorkbook>>;
+
+    /// Read the last modification date (parsed from file metadata)
+    fn read_modified_date(&mut self) -> Result<Option<chrono::DateTime<chrono::Utc>>>;
+
+    /// Check if the workbook uses the 1904 date system
+    fn read_date1904(&mut self) -> Result<bool>;
 }
 
 /// Read a workbook from a file path
@@ -102,7 +108,15 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
     // but for now we'll stick to extension-based or default to one if Zip format allows.
     // In practice, we usually know the extension.
 
-    let (sheets, defined_names, hidden_sheets, has_macros, external_workbooks) = if is_xlsx {
+    let (
+        sheets,
+        defined_names,
+        hidden_sheets,
+        has_macros,
+        external_workbooks,
+        modified_date,
+        date1904,
+    ) = if is_xlsx {
         let mut reader = XlsxReader::new(&mut archive)?;
         (
             reader.read_sheets()?,
@@ -110,6 +124,8 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
             reader.read_hidden_sheets()?,
             reader.has_macros()?,
             reader.read_external_workbooks()?,
+            reader.read_modified_date()?,
+            reader.read_date1904()?,
         )
     } else if is_ods || (!is_xlsx && archive.by_name("content.xml").is_ok()) {
         // Simple heuristic for ODS if no extension: check for content.xml
@@ -122,6 +138,8 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
             reader.read_hidden_sheets()?,
             reader.has_macros()?,
             reader.read_external_workbooks()?,
+            reader.read_modified_date()?,
+            reader.read_date1904()?,
         )
     } else if is_xlsx || archive.by_name("[Content_Types].xml").is_ok() {
         // Simple heuristic for XLSX if no extension: check for [Content_Types].xml
@@ -132,6 +150,8 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
             reader.read_hidden_sheets()?,
             reader.has_macros()?,
             reader.read_external_workbooks()?,
+            reader.read_modified_date()?,
+            reader.read_date1904()?,
         )
     } else {
         return Err(anyhow::anyhow!("Unsupported or unrecognizable file format"));
@@ -144,6 +164,8 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
         hidden_sheets,
         has_macros,
         external_workbooks,
+        modified_date,
+        date1904,
     })
 }
 

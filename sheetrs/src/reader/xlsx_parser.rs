@@ -348,6 +348,99 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
     fn read_external_workbooks(&mut self) -> Result<Vec<super::ExternalWorkbook>> {
         extract_external_workbooks_xlsx(self.archive)
     }
+
+    fn read_modified_date(&mut self) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        extract_modified_date_xlsx(self.archive)
+    }
+
+    fn read_date1904(&mut self) -> Result<bool> {
+        extract_date1904_xlsx(self.archive)
+    }
+}
+
+/// Extract last modified date from docProps/core.xml
+fn extract_modified_date_xlsx(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    use chrono::{DateTime, Utc};
+
+    let core_xml = match archive.by_name("docProps/core.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(core_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+    let mut in_modified = false;
+    let mut modified_date: Option<DateTime<Utc>> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => {
+                // dcterms:modified or cp:modified
+                let name = e.name();
+                if name.as_ref().ends_with(b":modified") || name.as_ref() == b"modified" {
+                    in_modified = true;
+                }
+            }
+            Event::Text(e) if in_modified => {
+                let date_str = e.unescape()?.to_string();
+                // Parse ISO 8601 / RFC 3339 format
+                if let Ok(parsed) = DateTime::parse_from_rfc3339(&date_str) {
+                    modified_date = Some(parsed.with_timezone(&Utc));
+                }
+                in_modified = false;
+            }
+            Event::End(e) => {
+                let name = e.name();
+                if name.as_ref().ends_with(b":modified") || name.as_ref() == b"modified" {
+                    in_modified = false;
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(modified_date)
+}
+
+/// Extract date1904 setting from xl/workbook.xml
+fn extract_date1904_xlsx(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<bool> {
+    let workbook_xml = match archive.by_name("xl/workbook.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(false),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(workbook_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) | Event::Empty(e) => {
+                if e.name().as_ref() == b"workbookPr" {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"date1904" {
+                            let value = attr.unescape_value()?;
+                            return Ok(value == "1" || value.eq_ignore_ascii_case("true"));
+                        }
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(false)
 }
 
 pub fn extract_external_links_xlsx(

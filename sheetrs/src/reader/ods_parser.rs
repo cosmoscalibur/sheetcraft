@@ -1959,6 +1959,102 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         }
         Ok(self.data.as_ref().unwrap().external_workbooks.clone())
     }
+
+    fn read_modified_date(&mut self) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        extract_modified_date_ods(self.archive)
+    }
+
+    fn read_date1904(&mut self) -> Result<bool> {
+        extract_date1904_ods(self.archive)
+    }
+}
+
+/// Extract last modified date from meta.xml
+fn extract_modified_date_ods(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    use chrono::{DateTime, Utc};
+
+    let meta_xml = match archive.by_name("meta.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(meta_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+    let mut in_date = false;
+    let mut modified_date: Option<DateTime<Utc>> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => {
+                // dc:date element contains the last modified date
+                let name = e.name();
+                if name.as_ref().ends_with(b":date") || name.as_ref() == b"date" {
+                    in_date = true;
+                }
+            }
+            Event::Text(e) if in_date => {
+                let date_str = e.unescape()?.to_string();
+                // Parse ISO 8601 / RFC 3339 format
+                if let Ok(parsed) = DateTime::parse_from_rfc3339(&date_str) {
+                    modified_date = Some(parsed.with_timezone(&Utc));
+                }
+                in_date = false;
+            }
+            Event::End(e) => {
+                let name = e.name();
+                if name.as_ref().ends_with(b":date") || name.as_ref() == b"date" {
+                    in_date = false;
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(modified_date)
+}
+
+/// Extract date1904 setting from content.xml or settings.xml
+/// ODS uses <table:null-date table:date-value="1904-01-01"/> in calculation settings
+fn extract_date1904_ods(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<bool> {
+    // Check content.xml for null-date specification
+    let content_xml = match archive.by_name("content.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(false),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(content_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) | Event::Empty(e) => {
+                if e.name().as_ref() == b"table:null-date" {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"table:date-value" {
+                            let value = attr.unescape_value()?;
+                            // 1904 date system uses 1904-01-01 as epoch
+                            return Ok(value.starts_with("1904"));
+                        }
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(false)
 }
 
 // Helper to calculate used range from cells

@@ -117,7 +117,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **FILE1001** (Large File Size) | `book::metadata` | > 10MB | - | ✅ | ✅ | Detects physical size bloat indicating instability or excessive data. |
-| **FILE1002** (Old Spreadsheet) | `book::metadata` | `.xls` format | - | ✅ | ✅ | Detects temporal debt and risk of technological obsolescence. |
+| **FILE1002** (Old Spreadsheet) | `book::metadata` | > 365 days old | - | ✅ | ✅ | Detects spreadsheets with old modification date indicating stale data. |
 | **FILE1003** (1904 Date System) | `book::metadata` | `date1904: true` | - | ✅ | ✅ | Flags legacy Macintosh date systems causing calculation drift. |
 
 ## 11. VBA Issues (VBA11xx)

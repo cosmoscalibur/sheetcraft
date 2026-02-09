@@ -1,31 +1,50 @@
 //! FILE1003: 1904 Date System detection
 //!
-//! Description: Flags legacy Macintosh date systems causing calculation drift.
+//! Detects spreadsheets using the 1904 date system (legacy Mac compatibility).
+//! This can cause date calculation issues when sharing files between systems.
 
-use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 
-/// Rule that identifies usage of the 1904 date system
+/// Rule that identifies spreadsheets using the 1904 date system.
+///
+/// The 1904 date system:
+/// - Was originally used by Excel on Macintosh for backward compatibility
+/// - Uses January 1, 1904 as the epoch instead of January 1, 1900
+/// - Can cause date values to be off by 4 years and 1 day when shared
+/// - Most modern spreadsheets use the 1900 date system (default)
 pub struct DateSystem1904Rule;
 
-impl LinterRule for DateSystem1904Rule {
-    fn id(&self) -> RuleId {
-        RuleId::File1003
+impl DateSystem1904Rule {
+    /// Creates a new rule instance.
+    #[must_use]
+    pub fn new() -> Self {
+        Self
     }
 
-    fn name(&self) -> &str {
-        "1904 Date System"
-    }
+    /// Check for 1904 date system and return violation if found.
+    fn check_date_system(&self, workbook: &Workbook) -> Vec<Violation> {
+        let mut violations = Vec::new();
 
-    fn category(&self) -> RuleCategory {
-        RuleCategory::File
-    }
+        if workbook.date1904 {
+            violations.push(Violation::new(
+                RuleId::File1003,
+                ViolationScope::Book,
+                "Workbook uses 1904 date system. This can cause date calculation \
+                 issues when sharing files between systems."
+                    .to_string(),
+                Severity::Warning,
+            ));
+        }
 
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
+        violations
+    }
+}
+
+impl Default for DateSystem1904Rule {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -34,8 +53,46 @@ impl WalkerRule for DateSystem1904Rule {
         RuleId::File1003
     }
 
-    fn on_workbook_start(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
-        // Placeholder implementation (matches check)
-        Vec::new()
+    fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        self.check_date_system(workbook)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_date_system_no_violation() {
+        let workbook = Workbook {
+            date1904: false,
+            ..Default::default()
+        };
+
+        let rule = DateSystem1904Rule::new();
+        let violations = rule.check_date_system(&workbook);
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn test_1904_date_system_violation() {
+        let workbook = Workbook {
+            date1904: true,
+            ..Default::default()
+        };
+
+        let rule = DateSystem1904Rule::new();
+        let violations = rule.check_date_system(&workbook);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, RuleId::File1003);
+        assert!(violations[0].message.contains("1904 date system"));
+    }
+
+    #[test]
+    fn test_default_workbook_no_violation() {
+        let workbook = Workbook::default();
+        let rule = DateSystem1904Rule::new();
+        let violations = rule.check_date_system(&workbook);
+        assert!(violations.is_empty());
     }
 }
