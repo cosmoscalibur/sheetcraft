@@ -37,6 +37,8 @@ pub struct Workbook {
     pub modified_date: Option<DateTime<Utc>>,
     /// Whether the workbook uses the 1904 date system (legacy Mac compatibility)
     pub date1904: bool,
+    /// File size in bytes (extracted from file metadata)
+    pub file_size_bytes: u64,
 }
 
 impl Workbook {

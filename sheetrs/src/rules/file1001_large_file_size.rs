@@ -1,13 +1,12 @@
 //! FILE1001: Large File Size detection
 //!
 //! Detects physical size bloat indicating instability or excessive data.
-//! Uses filesystem metadata to check file size at workbook path.
+//! Uses file_size_bytes metadata from Workbook (Parse-Dont-Validate pattern).
 
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use std::fs;
 
 /// Default maximum file size threshold in megabytes
 const DEFAULT_MAX_FILE_SIZE_MB: i64 = 10;
@@ -37,27 +36,20 @@ impl LargeFileSizeRule {
     }
 
     /// Check file size and return violation if exceeded.
+    /// Uses file_size_bytes from Workbook metadata (pre-extracted by parser).
     fn check_size(&self, workbook: &Workbook) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        // Skip if workbook has no valid path
-        if workbook.path.as_os_str().is_empty() {
-            return violations;
-        }
-
-        // Attempt to get file metadata
-        if let Ok(metadata) = fs::metadata(&workbook.path) {
-            let file_size = metadata.len();
-            if file_size > self.max_file_size_bytes {
-                let size_mb = file_size as f64 / (1024.0 * 1024.0);
-                let threshold_mb = self.max_file_size_bytes as f64 / (1024.0 * 1024.0);
-                violations.push(Violation::new(
-                    RuleId::File1001,
-                    ViolationScope::Book,
-                    format!("File size {size_mb:.2} MB exceeds threshold of {threshold_mb:.0} MB",),
-                    Severity::Warning,
-                ));
-            }
+        let file_size = workbook.file_size_bytes;
+        if file_size > self.max_file_size_bytes {
+            let size_mb = file_size as f64 / (1024.0 * 1024.0);
+            let threshold_mb = self.max_file_size_bytes as f64 / (1024.0 * 1024.0);
+            violations.push(Violation::new(
+                RuleId::File1001,
+                ViolationScope::Book,
+                format!("File size {size_mb:.2} MB exceeds threshold of {threshold_mb:.0} MB"),
+                Severity::Warning,
+            ));
         }
 
         violations
@@ -85,17 +77,11 @@ impl WalkerRule for LargeFileSizeRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_small_file_no_violation() {
-        // Create a small temp file
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"small content").unwrap();
-
         let workbook = Workbook {
-            path: file.path().to_path_buf(),
+            file_size_bytes: 1024, // 1 KB
             ..Default::default()
         };
 
@@ -106,18 +92,12 @@ mod tests {
 
     #[test]
     fn test_large_file_violation() {
-        // Create rule with 1 KB threshold for testing
         let rule = LargeFileSizeRule {
-            max_file_size_bytes: 1024,
+            max_file_size_bytes: 1024, // 1 KB threshold
         };
 
-        // Create a file larger than 1 KB
-        let mut file = NamedTempFile::new().unwrap();
-        let large_content = vec![b'x'; 2048];
-        file.write_all(&large_content).unwrap();
-
         let workbook = Workbook {
-            path: file.path().to_path_buf(),
+            file_size_bytes: 2048, // 2 KB
             ..Default::default()
         };
 
@@ -128,20 +108,8 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_path_no_violation() {
+    fn test_zero_size_no_violation() {
         let workbook = Workbook::default();
-        let rule = LargeFileSizeRule::default();
-        let violations = rule.check_size(&workbook);
-        assert!(violations.is_empty());
-    }
-
-    #[test]
-    fn test_nonexistent_file_no_violation() {
-        let workbook = Workbook {
-            path: "/nonexistent/path/to/file.xlsx".into(),
-            ..Default::default()
-        };
-
         let rule = LargeFileSizeRule::default();
         let violations = rule.check_size(&workbook);
         assert!(violations.is_empty());

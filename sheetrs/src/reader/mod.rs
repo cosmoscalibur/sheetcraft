@@ -76,11 +76,15 @@ pub fn read_workbook<P: AsRef<Path>>(path: P) -> Result<Workbook> {
     let file = File::open(path_ref)
         .with_context(|| format!("Failed to open file: {}", path_ref.display()))?;
 
+    // Extract file size from metadata (Parse-Dont-Validate)
+    let file_size_bytes = std::fs::metadata(path_ref).map(|m| m.len()).unwrap_or(0);
+
     let extension = path_ref.extension().and_then(|s| s.to_str());
     let mut workbook = read_workbook_from_reader(file, extension)?;
 
-    // Preserve the original path
+    // Preserve the original path and file size
     workbook.path = path_ref.to_path_buf();
+    workbook.file_size_bytes = file_size_bytes;
     Ok(workbook)
 }
 
@@ -166,6 +170,7 @@ pub fn read_workbook_from_reader<R: std::io::Read + std::io::Seek>(
         external_workbooks,
         modified_date,
         date1904,
+        file_size_bytes: 0, // Will be set by read_workbook when path is known
     })
 }
 
