@@ -1132,9 +1132,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         }
 
                         // Finalize previous sheet if it exists and it's not external
-                        if let Some(sheet) = current_sheet.take()
+                        if let Some(mut sheet) = current_sheet.take()
                             && !skip_current_sheet
                         {
+                            sheet.cells.shrink_to_fit();
                             sheets.push(sheet);
                         }
 
@@ -1776,9 +1777,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
             }
 
             // Finalize the last sheet if it exists and it's not external
-            if let Some(sheet) = current_sheet
+            if let Some(mut sheet) = current_sheet
                 && !skip_current_sheet
             {
+                sheet.cells.shrink_to_fit();
                 sheets.push(sheet);
             }
         } // End of content.xml parsing scope

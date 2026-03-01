@@ -307,6 +307,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
 
             sheet.used_range = dim_range;
 
+            sheet.cells.shrink_to_fit();
             sheets.push(sheet);
         }
 
