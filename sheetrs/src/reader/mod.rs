@@ -225,7 +225,7 @@ mod date_format_parity_tests {
         // Verify D7 truth values (Indexing tests)
         let d7_ods = sheet_ods.cells.get(&(6, 3)).unwrap();
         assert_eq!(
-            d7_ods.num_fmt.as_ref().unwrap(),
+            d7_ods.num_fmt.as_deref().unwrap(),
             EXPECTED_D7_FORMAT,
             "ODS D7 format should match truth value"
         );
@@ -241,7 +241,7 @@ mod date_format_parity_tests {
         // Verify D8 truth values (Indexing tests) - THE FIX TARGET
         let d8_ods = sheet_ods.cells.get(&(7, 3)).unwrap();
         assert_eq!(
-            d8_ods.num_fmt.as_ref().unwrap(),
+            d8_ods.num_fmt.as_deref().unwrap(),
             EXPECTED_D8_FORMAT,
             "ODS D8 format should be 'dd/mm/yy hh:mm' (two-digit), not 'd/m/yy hh:mm'"
         );
@@ -269,7 +269,7 @@ mod date_format_parity_tests {
         // Verify D7 truth values
         let d7_xlsx = sheet_xlsx.cells.get(&(6, 3)).unwrap();
         assert_eq!(
-            d7_xlsx.num_fmt.as_ref().unwrap(),
+            d7_xlsx.num_fmt.as_deref().unwrap(),
             EXPECTED_D7_FORMAT,
             "XLSX D7 format should match truth value"
         );
@@ -285,7 +285,7 @@ mod date_format_parity_tests {
         // Verify D8 truth values
         let d8_xlsx = sheet_xlsx.cells.get(&(7, 3)).unwrap();
         assert_eq!(
-            d8_xlsx.num_fmt.as_ref().unwrap(),
+            d8_xlsx.num_fmt.as_deref().unwrap(),
             EXPECTED_D8_FORMAT,
             "XLSX D8 format should match truth value"
         );

@@ -122,6 +122,7 @@ mod tests {
     use crate::reader::{Cell, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_date_format_check() {
@@ -130,7 +131,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
-                num_fmt: Some("mm/dd/yyyy".to_string()),
+                num_fmt: Some(Arc::from("mm/dd/yyyy")),
                 row: 0,
                 col: 0,
                 value: CellValue::Number(44000.0),
@@ -140,7 +141,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
-                num_fmt: Some("dd-mm-yyyy".to_string()),
+                num_fmt: Some(Arc::from("dd-mm-yyyy")),
                 row: 0,
                 col: 1,
                 value: CellValue::Number(44000.0),
@@ -150,7 +151,7 @@ mod tests {
         cells.insert(
             (0, 2),
             Cell {
-                num_fmt: Some("General".to_string()),
+                num_fmt: Some(Arc::from("General")),
                 row: 0,
                 col: 2,
                 value: CellValue::Number(123.0),

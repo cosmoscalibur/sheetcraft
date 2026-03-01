@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
@@ -163,7 +164,9 @@ pub struct Cell {
     /// The value or formula contained in the cell
     pub value: CellValue,
     /// The number format string applied to the cell (e.g., "0.00", "mm/dd/yyyy")
-    pub num_fmt: Option<String>,
+    ///
+    /// Interned via `Arc<str>` so cells sharing the same format reuse a single allocation.
+    pub num_fmt: Option<Arc<str>>,
 }
 
 /// Cell value types

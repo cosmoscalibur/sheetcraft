@@ -7,6 +7,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::io::BufReader;
+use std::sync::Arc;
 use zip::ZipArchive;
 
 /// Extract merged cell ranges from an ODS worksheet
@@ -596,9 +597,9 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         // ============================================================
         // STATE: Date styles extraction (from content.xml)
         // ============================================================
-        let mut data_styles = HashMap::new();
+        let mut data_styles: HashMap<String, Arc<str>> = HashMap::new();
         let mut cell_styles = HashMap::new();
-        let mut date_styles = HashMap::new(); // Resolved styles for cell lookup
+        let mut date_styles: HashMap<String, Arc<str>> = HashMap::new(); // Resolved styles for cell lookup
         let mut current_data_style_name = String::new();
         let mut current_format = String::new();
         let mut in_date_style = false;
@@ -668,8 +669,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                 for attr in e.attributes().flatten() {
                                     if attr.key.as_ref() == b"style:name" {
                                         let style_name = attr.unescape_value()?.to_string();
-                                        data_styles.insert(style_name.clone(), "@".to_string());
-                                        date_styles.insert(style_name, "@".to_string());
+                                        data_styles.insert(style_name.clone(), Arc::from("@"));
+                                        date_styles.insert(style_name, Arc::from("@"));
                                     }
                                 }
                             }
@@ -825,17 +826,19 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             if !current_data_style_name.is_empty() {
                                 data_styles.insert(
                                     current_data_style_name.clone(),
-                                    current_format.clone(),
+                                    Arc::from(current_format.as_str()),
                                 );
                                 date_styles.insert(
                                     current_data_style_name.clone(),
-                                    current_format.clone(),
+                                    Arc::from(current_format.as_str()),
                                 );
                                 // Resolve any cell styles that reference this data style
                                 for (cell_style, data_style) in &cell_styles {
                                     if data_style == &current_data_style_name {
-                                        date_styles
-                                            .insert(cell_style.clone(), current_format.clone());
+                                        date_styles.insert(
+                                            cell_style.clone(),
+                                            Arc::from(current_format.as_str()),
+                                        );
                                     }
                                 }
                             }
@@ -895,8 +898,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"style:name" {
                                 let style_name = attr.unescape_value()?.to_string();
-                                data_styles.insert(style_name.clone(), "@".to_string());
-                                date_styles.insert(style_name, "@".to_string());
+                                data_styles.insert(style_name.clone(), Arc::from("@"));
+                                date_styles.insert(style_name, Arc::from("@"));
                             }
                         }
                     }
@@ -1083,15 +1086,22 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                     // DATE STYLES: end of date-style
                     Event::End(e) if e.name().as_ref() == b"number:date-style" => {
                         if !current_data_style_name.is_empty() {
-                            data_styles
-                                .insert(current_data_style_name.clone(), current_format.clone());
+                            data_styles.insert(
+                                current_data_style_name.clone(),
+                                Arc::from(current_format.as_str()),
+                            );
                             // Also add to date_styles directly
-                            date_styles
-                                .insert(current_data_style_name.clone(), current_format.clone());
+                            date_styles.insert(
+                                current_data_style_name.clone(),
+                                Arc::from(current_format.as_str()),
+                            );
                             // Resolve any cell styles that reference this data style
                             for (cell_style, data_style) in &cell_styles {
                                 if data_style == &current_data_style_name {
-                                    date_styles.insert(cell_style.clone(), current_format.clone());
+                                    date_styles.insert(
+                                        cell_style.clone(),
+                                        Arc::from(current_format.as_str()),
+                                    );
                                 }
                             }
                         }

@@ -354,6 +354,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_blank_rows() {
@@ -993,7 +994,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
-                num_fmt: Some("custom".to_string()),
+                num_fmt: Some(Arc::from("custom")),
                 row: 1,
                 col: 0,
                 value: CellValue::Empty,
@@ -1002,7 +1003,7 @@ mod tests {
         cells.insert(
             (2, 0),
             Cell {
-                num_fmt: Some("custom".to_string()),
+                num_fmt: Some(Arc::from("custom")),
                 row: 2,
                 col: 0,
                 value: CellValue::Empty,
@@ -1011,7 +1012,7 @@ mod tests {
         cells.insert(
             (3, 0),
             Cell {
-                num_fmt: Some("custom".to_string()),
+                num_fmt: Some(Arc::from("custom")),
                 row: 3,
                 col: 0,
                 value: CellValue::Empty,

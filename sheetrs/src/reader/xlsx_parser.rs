@@ -5,6 +5,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::io::BufReader;
+use std::sync::Arc;
 use zip::ZipArchive;
 
 use super::{Cell, CellValue, Sheet, WorkbookReader};
@@ -265,7 +266,7 @@ pub fn extract_tables_from_xlsx(
 pub struct XlsxReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
     shared_strings: Vec<String>,
-    styles: Vec<String>,
+    styles: Vec<Arc<str>>,
 }
 
 impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
@@ -1063,7 +1064,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
     reader: &mut Reader<R>,
     t_attr: &str,
     shared_strings: &[String],
-    _styles: &[String],
+    _styles: &[Arc<str>],
     num_fmt: Option<&str>,
 ) -> Result<ParsedCellData> {
     let mut value = CellValue::Empty;
@@ -1541,7 +1542,7 @@ fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
 /// Returns a list of format strings indexed by style index (xf index)
 pub fn extract_formats_from_xlsx(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let formats = Vec::new();
     let mut num_fmts = HashMap::new();
 
@@ -1643,7 +1644,7 @@ pub fn extract_formats_from_xlsx(
 /// Actual implementation of parsing styles
 pub fn parse_styles(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let mut num_fmts = HashMap::new();
 
     // Built-in formats (same as above)
@@ -1728,11 +1729,11 @@ pub fn parse_styles(
                                 num_fmt_id = val;
                             }
                         }
-                        // Look up format code
-                        let format_code = num_fmts
+                        // Look up format code and intern as Arc<str>
+                        let format_code: Arc<str> = num_fmts
                             .get(&num_fmt_id)
-                            .cloned()
-                            .unwrap_or_else(|| "General".to_string());
+                            .map(|s| Arc::from(s.as_str()))
+                            .unwrap_or_else(|| Arc::from("General"));
                         xfs.push(format_code);
                     }
                     _ => {}
@@ -1772,10 +1773,10 @@ pub fn parse_styles(
                                 num_fmt_id = val;
                             }
                         }
-                        let format_code = num_fmts
+                        let format_code: Arc<str> = num_fmts
                             .get(&num_fmt_id)
-                            .cloned()
-                            .unwrap_or_else(|| "General".to_string());
+                            .map(|s| Arc::from(s.as_str()))
+                            .unwrap_or_else(|| Arc::from("General"));
                         xfs.push(format_code);
                     }
                     _ => {}
