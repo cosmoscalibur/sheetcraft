@@ -1,15 +1,14 @@
-//! SM005: Non-descriptive sheet names
+//! DATA701: Non-descriptive sheet names
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::Workbook;
+use crate::reader::Sheet;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
 
-#[derive(Default)]
 /// Rule that detects non-descriptive sheet names (e.g. Sheet1, Sheet2)
 ///
 /// Generic names make it hard to understand the purpose of a worksheet.
+#[derive(Default)]
 pub struct NonDescriptiveSheetNameRule {
     config: LinterConfig,
 }
@@ -23,91 +22,89 @@ impl NonDescriptiveSheetNameRule {
     }
 }
 
-impl LinterRule for NonDescriptiveSheetNameRule {
+impl WalkerRule for NonDescriptiveSheetNameRule {
     fn id(&self) -> RuleId {
         RuleId::Data701
     }
 
-    fn name(&self) -> &str {
-        "Generic Sheet Name"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::Data
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
+        let normalized_name = sheet.name.to_lowercase();
+        let patterns = self
+            .config
+            .get_param_array("avoid_sheet_names", Some(&sheet.name))
+            .unwrap_or_else(|| vec!["sheet".to_string(), "copy".to_string()]);
 
-        for sheet in &workbook.sheets {
-            let normalized_name = sheet.name.to_lowercase();
-            let patterns = self
-                .config
-                .get_param_array("avoid_sheet_names", Some(&sheet.name))
-                .unwrap_or_else(|| vec!["sheet".to_string(), "copy".to_string()]);
-
-            for pattern in &patterns {
-                if normalized_name.contains(pattern) {
-                    violations.push(Violation::new(
-                        RuleId::Data701,
-                        ViolationScope::Book,
-                        format!(
-                            "Non-descriptive sheet name '{}' contains pattern '{}'",
-                            sheet.name, pattern
-                        ),
-                        Severity::Warning,
-                    ));
-                    break; // Only report once per sheet
-                }
+        for pattern in &patterns {
+            if normalized_name.contains(pattern) {
+                violations.push(Violation::new(
+                    RuleId::Data701,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    format!(
+                        "Non-descriptive sheet name '{}' contains pattern '{}'",
+                        sheet.name, pattern
+                    ),
+                    Severity::Warning,
+                ));
+                break; // Only report once per sheet
             }
         }
 
-        Ok(violations)
+        violations
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::workbook::Sheet;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
-    fn test_non_descriptive_sheet_names() {
-        let sheets = vec![
-            Sheet {
-                name: "Sheet1".to_string(),
-                cells: HashMap::new(),
-                used_range: None,
-                ..Default::default()
-            },
-            Sheet {
-                name: "Copy of Data".to_string(),
-                cells: HashMap::new(),
-                used_range: None,
-                ..Default::default()
-            },
-            Sheet {
-                name: "Analysis".to_string(),
-                cells: HashMap::new(),
-                used_range: None,
-                ..Default::default()
-            },
-        ];
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets,
+    fn test_non_descriptive_sheet_name() {
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            sheet_index: 0,
             ..Default::default()
         };
 
         let rule = NonDescriptiveSheetNameRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
-        assert_eq!(violations.len(), 2);
+        assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Data701);
+        assert_eq!(violations[0].scope, ViolationScope::Sheet(0));
         assert!(violations[0].message.contains("Sheet1"));
-        assert!(violations[1].message.contains("Copy of Data"));
+    }
+
+    #[test]
+    fn test_copy_sheet_name() {
+        let sheet = Sheet {
+            name: "Copy of Data".to_string(),
+            sheet_index: 1,
+            ..Default::default()
+        };
+
+        let rule = NonDescriptiveSheetNameRule::default();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
+
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].scope, ViolationScope::Sheet(1));
+        assert!(violations[0].message.contains("Copy of Data"));
+    }
+
+    #[test]
+    fn test_descriptive_sheet_name() {
+        let sheet = Sheet {
+            name: "Analysis".to_string(),
+            sheet_index: 2,
+            ..Default::default()
+        };
+
+        let rule = NonDescriptiveSheetNameRule::default();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
+
+        assert_eq!(violations.len(), 0);
     }
 }

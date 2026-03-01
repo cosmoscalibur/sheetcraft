@@ -1,29 +1,20 @@
-//! SEC004: Macros and scripts detection
+//! VBA1101: Macros and scripts detection
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
 
 /// Rule that detects the presence of macros (VBA/Scripts)
 ///
 /// Macros can pose security risks or indicate legacy automation that may need review.
 pub struct HasMacrosRule;
 
-impl LinterRule for HasMacrosRule {
+impl WalkerRule for HasMacrosRule {
     fn id(&self) -> RuleId {
         RuleId::Vba1101
     }
 
-    fn name(&self) -> &str {
-        "Workbook has Macros"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::VBA
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
         if workbook.has_macros {
@@ -35,7 +26,7 @@ impl LinterRule for HasMacrosRule {
             ));
         }
 
-        Ok(violations)
+        violations
     }
 }
 
@@ -54,7 +45,8 @@ mod tests {
         };
 
         let rule = HasMacrosRule;
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_workbook_start(&workbook, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vba1101);
@@ -69,7 +61,8 @@ mod tests {
         };
 
         let rule = HasMacrosRule;
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_workbook_start(&workbook, &mut ctx);
 
         assert_eq!(violations.len(), 0);
     }

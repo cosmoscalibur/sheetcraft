@@ -14,7 +14,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **ERR101** (Broken Defined Name) | `book::named_ranges` | `RefersTo: =#REF!` | - | ✅ | ❌ | Detects named ranges pointing to invalid or deleted cell regions. |
+| **ERR101** (Broken Defined Name) | `book::named_ranges` | `RefersTo: =#REF!` | - | ✅ | ✅ | Detects named ranges pointing to invalid or deleted cell regions. |
 | **ERR102** (Excel Error) | `cell::value` | `#DIV/0!`, `#REF!` | - | ✅ | ❌ | Identifies cells containing raw Excel calculation error codes. |
 | **ERR103** (Reference to Error) | `cell::formula` | `=A1` (A1 is error) | `!ERR102` | ❌ | ❌ | Flags formulas referencing cells that currently store an error. |
 
@@ -22,7 +22,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **CALC201** (Hardcoded Number) | `cell::formula` | `=A1*1.5` | - | ✅ | ❌ | Detects static numeric constants embedded within formula logic. |
+| **CALC201** (Hardcoded Number) | `cell::formula` | `=A1*1.5` | - | ✅ | ✅ | Detects static numeric constants embedded within formula logic. |
 | **CALC202** (Circular Reference) | `cell::formula (inter)` | `A1=B1, B1=A1` | - | ✅ | ✅ | Detects recursive dependency loops that prevent successful calculation. |
 | **CALC203** (Double Operator) | `cell::formula` | `=1++2` | `!ERR102` | ❌ | ❌ | Flags redundant operator sequences indicating potential typos. |
 | **CALC204** (Approximate Lookup) | `cell::formula" | "VLOOKUP(A1, B:C, 2)`| - | ❌ | ❌ | Identifies lookup functions missing the strict exact-match flag. |
@@ -82,7 +82,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **DATA701** (Generic Sheet Name) | `sheet::metadata` | "Sheet1" | - | ✅ | ❌ | Identifies failure to use descriptive worksheet naming. |
+| **DATA701** (Generic Sheet Name) | `sheet::metadata` | "Sheet1" | - | ✅ | ✅ | Identifies failure to use descriptive worksheet naming. |
 | **DATA702** (Number Stored as Text) | `cell::content` | Num val in Text fmt | - | ✅ | ❌ | Detects mismatch between cell conceptual type and applied format. |
 | **DATA703** (Inconsistent Date Format) | `cell::content` | Date val in Num fmt | - | ✅ | ❌ | Detects formatting drift in cells containing temporal data. |
 | **DATA704** (Long Text Cell) | `cell::value` | > 32k chars | - | ✅ | ❌ | Flags cells storing excessively large strings for the grid format. |
@@ -107,7 +107,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **HID901** (Hidden Defined Name) | `book::named_ranges` | `visible: false` | - | ❌ | ❌ | Detects invisible named ranges used for technical storage. |
 | **HID902** (Very Hidden Worksheet) | `sheet::visibility` | `hidden` | - | ❌ | ❌ | Specifically targets Excel "Very Hidden" sheets (vburied). |
-| **HID903** (Hidden Worksheet) | `sheet::visibility` | `hidden` / `vhidden` | - | ✅ | ❌ | Detects worksheets manually or programmatically hidden from view. |
+| **HID903** (Hidden Worksheet) | `sheet::visibility` | `hidden` / `vhidden` | - | ✅ | ✅ | Detects worksheets manually or programmatically hidden from view. |
 | **HID904** (Hidden Rows or Columns) | `sheet::layout` | `row::hidden` | - | ✅ | ❌ | Identifies rows or columns manually collapsed into invisibility. |
 | **HID905** (Hidden Formula) | `cell::style` | `formula::hidden` | - | ❌ | ❌ | Flags cells with logic hidden from the formula bar. |
 | **HID906** (Invisible Cell Value) | `cell::style` | Font color = BG | - | ❌ | ❌ | Detects data masked by color matches or formatting tricks. |
@@ -124,7 +124,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **VBA1101** (Workbook has Macros) | `vba::existence` | Binary part exists | - | ✅ | ❌ | Detects the presence of any VBA content in the workbook file. |
+| **VBA1101** (Workbook has Macros) | `vba::existence` | Binary part exists | - | ✅ | ✅ | Detects the presence of any VBA content in the workbook file. |
 
 ---
 

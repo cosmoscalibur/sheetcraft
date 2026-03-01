@@ -25,6 +25,16 @@ The main benchmark script. Uses `/usr/bin/time -v` for comprehensive metrics:
 
 Benchmarks use production files in `tests/production/`.
 
+### CALC201 Walker Migration (e9c34b9)
+
+| Metric | XLSX | ODS |
+|--------|------|-----|
+| Total time | 36.6s | 29.7s |
+| User time | 35.7s | 28.8s |
+| CPU usage | 99% | 99% |
+| Peak RAM | 1457 MB | 1594 MB |
+| Binary size | 8.4M | - |
+
 ### Walker Integration (56e85b5)
 
 | Metric | XLSX | ODS |

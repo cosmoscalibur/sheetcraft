@@ -2,35 +2,25 @@
 //!
 //! Description: Detects named ranges pointing to invalid or deleted cell regions.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
 
 /// Rule that identifies broken named ranges (references to invalid/deleted locations)
 ///
 /// Checks all defined names (named ranges) for reference strings containing "#REF!".
 pub struct BrokenNamedRangesRule;
 
-impl LinterRule for BrokenNamedRangesRule {
+impl WalkerRule for BrokenNamedRangesRule {
     fn id(&self) -> RuleId {
         RuleId::Err101
     }
 
-    fn name(&self) -> &str {
-        "Broken Defined Name"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::ExcelErrors
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        // Check each defined name to see if it references a valid range
         for (name, reference) in &workbook.defined_names {
-            if is_broken_reference(workbook, reference) {
+            if is_broken_reference(reference) {
                 violations.push(Violation::new(
                     RuleId::Err101,
                     ViolationScope::Book,
@@ -40,12 +30,12 @@ impl LinterRule for BrokenNamedRangesRule {
             }
         }
 
-        Ok(violations)
+        violations
     }
 }
 
 /// Check if a reference is broken (contains #REF! error)
-fn is_broken_reference(_workbook: &Workbook, reference: &str) -> bool {
+fn is_broken_reference(reference: &str) -> bool {
     // Validates REF error in range definition, ignoring sheet existence.
     // Example: "INGRESOS!#REF!"
     reference.contains("#REF!")
@@ -81,7 +71,8 @@ mod tests {
         };
 
         let rule = BrokenNamedRangesRule;
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_workbook_start(&workbook, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Err101);

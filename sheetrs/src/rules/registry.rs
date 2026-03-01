@@ -83,10 +83,14 @@ pub fn get_all_valid_tokens() -> HashSet<String> {
         tokens.insert(prefix.to_string());
     }
 
-    // Rule IDs
+    // Rule IDs from both legacy and walker rules
     let config = LinterConfig::default();
     let rules = create_all_rules(&config);
     for rule in rules {
+        tokens.insert(rule.id().to_string());
+    }
+    let walker_rules = create_all_walker_rules(&config);
+    for rule in walker_rules {
         tokens.insert(rule.id().to_string());
     }
 
@@ -115,7 +119,7 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     vec![
         // Excel Errors (1xx)
-        Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
+        // err101 moved to walker
         Box::new(err102_error_cells::ErrorCellsRule),
         Box::new(err103_ref_to_error::RefToErrorRule),
         // Unreliable Calculations (2xx)
@@ -167,7 +171,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(vul606_deprecated_func::DeprecatedFuncRule),
         Box::new(vul607_unprotected::UnprotectedRule),
         // Data Issues (7xx)
-        Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        // dat701 moved to walker
         Box::new(dat702_numeric_formats::InconsistentNumberFormatRule),
         Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
         Box::new(dat704_long_text::LongTextCellRule::new(config)),
@@ -184,20 +188,22 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         // Hidden Information (9xx)
         Box::new(hid901_hidden_defined_name::HiddenDefinedNameRule),
         Box::new(hid902_very_hidden_worksheet::VeryHiddenWorksheetRule),
-        Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
+        // hid903 moved to walker
         Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
         Box::new(hid905_hidden_formula::HiddenFormulaRule),
         Box::new(hid906_invisible_cell_value::InvisibleCellValueRule),
         // Files & Settings (10xx)
         // file1001, file1002, file1003 moved to walker
         // VBA Issues (11xx)
-        Box::new(vba1101_has_macros::HasMacrosRule),
+        // vba1101 moved to walker
     ]
 }
 
 /// Create instances of all available walker rules
 pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>> {
     vec![
+        // Excel Errors (1xx)
+        Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
         // Unreliable Calculations (2xx)
         Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config)),
         Box::new(calc202_circular_references::CircularReferenceRule::new()),
@@ -207,10 +213,16 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         // Complexity (5xx)
         Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         Box::new(cpx502_merged_cells::MergedCellsRule),
+        // Data Issues (7xx)
+        Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        // Hidden Information (9xx)
+        Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
         // Files & Settings (10xx)
         Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
         Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
+        // VBA Issues (11xx)
+        Box::new(vba1101_has_macros::HasMacrosRule),
     ]
 }
 
@@ -235,6 +247,7 @@ pub fn create_enabled_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerR
 /// Clone a walker rule for execution (rules need fresh state per lint)
 pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dyn WalkerRule> {
     match rule.id() {
+        RuleId::Err101 => Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
         RuleId::Calc201 => {
             Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
         }
@@ -243,9 +256,12 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
+        RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        RuleId::Hid903 => Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
         RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
         RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
+        RuleId::Vba1101 => Box::new(vba1101_has_macros::HasMacrosRule),
         _ => panic!("Unknown walker rule: {:?}", rule.id()),
     }
 }
@@ -266,7 +282,9 @@ mod tests {
     fn test_default_activation() {
         let config = LinterConfig::default();
         let enabled = create_enabled_rules(&config);
-        assert!(enabled.iter().any(|r| r.id() == RuleId::Err101));
         assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
+        // ERR101 is now a walker rule
+        let walker_enabled = create_enabled_walker_rules(&config);
+        assert!(walker_enabled.iter().any(|r| r.id() == RuleId::Err101));
     }
 }
