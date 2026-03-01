@@ -556,9 +556,11 @@ fn strip_local_sheet_refs(formula: &str) -> String {
     result
 }
 
-/// Container for all data parsed from an ODS file
+/// Container for metadata parsed from an ODS file
+///
+/// Only caches lightweight metadata needed by subsequent reader methods.
+/// Sheet data is returned directly and not cached, avoiding a full clone.
 struct OdsData {
-    sheets: Vec<Sheet>,
     hidden_sheets: Vec<String>,
     has_macros: bool,
     external_workbooks: Vec<ExternalWorkbook>,
@@ -585,11 +587,6 @@ impl<'a, R: std::io::Read + std::io::Seek> OdsReader<'a, R> {
 
 impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
     fn read_sheets(&mut self) -> Result<Vec<Sheet>> {
-        // If data already parsed, return it
-        if let Some(ref data) = self.data {
-            return Ok(data.sheets.clone());
-        }
-
         // ============================================================
         // SINGLE PASS: Parse content.xml once for all concerns
         // ============================================================
@@ -1808,9 +1805,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
         // ============================================================
         let has_macros = has_macros(self.archive)?;
 
-        // Store all parsed data for future method calls
+        // Store metadata for future method calls (sheets are returned directly)
         self.data = Some(OdsData {
-            sheets: sheets.clone(),
             hidden_sheets,
             has_macros,
             external_workbooks,

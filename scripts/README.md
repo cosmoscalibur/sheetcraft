@@ -25,6 +25,16 @@ The main benchmark script. Uses `/usr/bin/time -v` for comprehensive metrics:
 
 Benchmarks use production files in `tests/production/`.
 
+### ViolationData Refactoring (2cbc5fc)
+
+| Metric | XLSX | ODS |
+|--------|------|-----|
+| Total time | 28.0s | 24.1s |
+| User time | 27.2s | 23.3s |
+| CPU usage | 99% | 99% |
+| Peak RAM | 1528 MB | 1631 MB |
+| Binary size | 8.4M | - |
+
 ### CALC201 Walker Migration (e9c34b9)
 
 | Metric | XLSX | ODS |
