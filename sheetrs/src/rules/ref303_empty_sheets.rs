@@ -174,6 +174,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_empty_unused_sheets() {
@@ -184,7 +185,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("Data".to_string()),
+                value: CellValue::Text(Arc::from("Data")),
             },
         );
 

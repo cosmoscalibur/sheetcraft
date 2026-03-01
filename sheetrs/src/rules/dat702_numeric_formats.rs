@@ -148,6 +148,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_numeric_text_detection() {
@@ -160,7 +161,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("42".to_string()),
+                value: CellValue::Text(Arc::from("42")),
             },
         );
 
@@ -170,7 +171,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::Text("3.14".to_string()),
+                value: CellValue::Text(Arc::from("3.14")),
             },
         );
 
@@ -192,7 +193,7 @@ mod tests {
                 num_fmt: None,
                 row: 3,
                 col: 0,
-                value: CellValue::Text("Hello".to_string()),
+                value: CellValue::Text(Arc::from("Hello")),
             },
         );
 

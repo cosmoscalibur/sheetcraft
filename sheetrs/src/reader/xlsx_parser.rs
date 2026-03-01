@@ -265,7 +265,7 @@ pub fn extract_tables_from_xlsx(
 /// Handles parsing of .xlsx workbook.xml, worksheets/*.xml and other parts
 pub struct XlsxReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
-    shared_strings: Vec<String>,
+    shared_strings: Vec<Arc<str>>,
     styles: Vec<Arc<str>>,
 }
 
@@ -1064,7 +1064,7 @@ type ParsedCellData = (CellValue, Option<String>, Option<u32>, Option<String>);
 fn parse_cell_contents<R: std::io::BufRead>(
     reader: &mut Reader<R>,
     t_attr: &str,
-    shared_strings: &[String],
+    shared_strings: &[Arc<str>],
     _styles: &[Arc<str>],
     num_fmt: Option<&str>,
 ) -> Result<ParsedCellData> {
@@ -1089,7 +1089,12 @@ fn parse_cell_contents<R: std::io::BufRead>(
                     value = match t_attr {
                         "s" => {
                             let idx = v_text.parse::<usize>().unwrap_or(0);
-                            CellValue::Text(shared_strings.get(idx).cloned().unwrap_or_default())
+                            CellValue::Text(
+                                shared_strings
+                                    .get(idx)
+                                    .cloned()
+                                    .unwrap_or_else(|| Arc::from("")),
+                            )
                         }
                         "b" => CellValue::Boolean(v_text == "1"),
                         "e" => {
@@ -1103,11 +1108,11 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             // In XLSX, text format is indicated by num_fmt == "@"
                             if num_fmt == Some("@") {
                                 // Store as text even if it looks like a number
-                                CellValue::Text(v_text)
+                                CellValue::Text(Arc::from(v_text.as_str()))
                             } else if let Ok(n) = v_text.parse::<f64>() {
                                 CellValue::Number(n)
                             } else {
-                                CellValue::Text(v_text)
+                                CellValue::Text(Arc::from(v_text.as_str()))
                             }
                         }
                     };
@@ -1159,7 +1164,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             }
                             is_buf.clear();
                         }
-                        value = CellValue::Text(is_text);
+                        value = CellValue::Text(Arc::from(is_text.as_str()));
                     }
                 }
                 _ => {}
@@ -1200,7 +1205,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
 
 pub fn extract_shared_strings(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let mut strings = Vec::new();
     let ss_xml = match archive.by_name("xl/sharedStrings.xml") {
         Ok(file) => file,
@@ -1218,7 +1223,7 @@ pub fn extract_shared_strings(
                 current_string.push_str(&read_text_node(&mut reader)?);
             }
             Event::End(e) if e.name().as_ref() == b"si" => {
-                strings.push(current_string.clone());
+                strings.push(Arc::from(current_string.as_str()));
                 current_string.clear();
             }
             Event::Eof => break,

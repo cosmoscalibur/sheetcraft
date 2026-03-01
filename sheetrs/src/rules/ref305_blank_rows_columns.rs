@@ -366,7 +366,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -375,7 +375,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::Text("B1".to_string()),
+                value: CellValue::Text(Arc::from("B1")),
             },
         );
         // Rows 1, 2, 3: blank -> 3 contiguous (exceeds threshold of 2)
@@ -386,7 +386,7 @@ mod tests {
                 num_fmt: None,
                 row: 4,
                 col: 0,
-                value: CellValue::Text("A5".to_string()),
+                value: CellValue::Text(Arc::from("A5")),
             },
         );
         cells.insert(
@@ -395,7 +395,7 @@ mod tests {
                 num_fmt: None,
                 row: 4,
                 col: 1,
-                value: CellValue::Text("B5".to_string()),
+                value: CellValue::Text(Arc::from("B5")),
             },
         );
 
@@ -441,7 +441,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -450,7 +450,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::Text("A2".to_string()),
+                value: CellValue::Text(Arc::from("A2")),
             },
         );
         // Columns B, C, D: blank -> 3 contiguous (exceeds threshold of 2)
@@ -461,7 +461,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 4,
-                value: CellValue::Text("E1".to_string()),
+                value: CellValue::Text(Arc::from("E1")),
             },
         );
         cells.insert(
@@ -470,7 +470,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 4,
-                value: CellValue::Text("E2".to_string()),
+                value: CellValue::Text(Arc::from("E2")),
             },
         );
 
@@ -515,7 +515,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -524,7 +524,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::Text("B1".to_string()),
+                value: CellValue::Text(Arc::from("B1")),
             },
         );
         cells.insert(
@@ -533,7 +533,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::Text("A2".to_string()),
+                value: CellValue::Text(Arc::from("A2")),
             },
         );
         cells.insert(
@@ -542,7 +542,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 1,
-                value: CellValue::Text("B2".to_string()),
+                value: CellValue::Text(Arc::from("B2")),
             },
         );
 
@@ -583,7 +583,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -592,7 +592,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::Text("B1".to_string()),
+                value: CellValue::Text(Arc::from("B1")),
             },
         );
         // Row 1: blank (only 1 blank row)
@@ -603,7 +603,7 @@ mod tests {
                 num_fmt: None,
                 row: 2,
                 col: 0,
-                value: CellValue::Text("A3".to_string()),
+                value: CellValue::Text(Arc::from("A3")),
             },
         );
         cells.insert(
@@ -612,7 +612,7 @@ mod tests {
                 num_fmt: None,
                 row: 2,
                 col: 1,
-                value: CellValue::Text("B3".to_string()),
+                value: CellValue::Text(Arc::from("B3")),
             },
         );
 
@@ -654,7 +654,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -663,7 +663,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::Text("B1".to_string()),
+                value: CellValue::Text(Arc::from("B1")),
             },
         );
         // Rows 1, 2: blank (exactly 2 blank rows, at threshold)
@@ -674,7 +674,7 @@ mod tests {
                 num_fmt: None,
                 row: 3,
                 col: 0,
-                value: CellValue::Text("A4".to_string()),
+                value: CellValue::Text(Arc::from("A4")),
             },
         );
         cells.insert(
@@ -683,7 +683,7 @@ mod tests {
                 num_fmt: None,
                 row: 3,
                 col: 1,
-                value: CellValue::Text("B4".to_string()),
+                value: CellValue::Text(Arc::from("B4")),
             },
         );
 
@@ -725,7 +725,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -734,7 +734,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::Text("A2".to_string()),
+                value: CellValue::Text(Arc::from("A2")),
             },
         );
         // Column B: blank (only 1 blank column)
@@ -745,7 +745,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 2,
-                value: CellValue::Text("C1".to_string()),
+                value: CellValue::Text(Arc::from("C1")),
             },
         );
         cells.insert(
@@ -754,7 +754,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 2,
-                value: CellValue::Text("C2".to_string()),
+                value: CellValue::Text(Arc::from("C2")),
             },
         );
 
@@ -796,7 +796,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -805,7 +805,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::Text("A2".to_string()),
+                value: CellValue::Text(Arc::from("A2")),
             },
         );
         // Columns B, C: blank (exactly 2 blank columns, at threshold)
@@ -816,7 +816,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 3,
-                value: CellValue::Text("D1".to_string()),
+                value: CellValue::Text(Arc::from("D1")),
             },
         );
         cells.insert(
@@ -825,7 +825,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 3,
-                value: CellValue::Text("D2".to_string()),
+                value: CellValue::Text(Arc::from("D2")),
             },
         );
 
@@ -867,7 +867,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         cells.insert(
@@ -876,7 +876,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::Text("B1".to_string()),
+                value: CellValue::Text(Arc::from("B1")),
             },
         );
         // Row 1: blank but part of merged cell F2:F5
@@ -887,7 +887,7 @@ mod tests {
                 num_fmt: None,
                 row: 2,
                 col: 0,
-                value: CellValue::Text("A3".to_string()),
+                value: CellValue::Text(Arc::from("A3")),
             },
         );
         cells.insert(
@@ -896,7 +896,7 @@ mod tests {
                 num_fmt: None,
                 row: 2,
                 col: 1,
-                value: CellValue::Text("B3".to_string()),
+                value: CellValue::Text(Arc::from("B3")),
             },
         );
         // Merged cell F2:F5 (row 1-4, col 5) - only first cell has data
@@ -906,7 +906,7 @@ mod tests {
                 num_fmt: None,
                 row: 1,
                 col: 5,
-                value: CellValue::Text("Merged".to_string()),
+                value: CellValue::Text(Arc::from("Merged")),
             },
         );
 
@@ -987,7 +987,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("A1".to_string()),
+                value: CellValue::Text(Arc::from("A1")),
             },
         );
         // Rows 1, 2, 3: Styled but Empty. Should be reported as blank rows!
@@ -1025,7 +1025,7 @@ mod tests {
                 num_fmt: None,
                 row: 4,
                 col: 0,
-                value: CellValue::Text("A5".to_string()),
+                value: CellValue::Text(Arc::from("A5")),
             },
         );
 

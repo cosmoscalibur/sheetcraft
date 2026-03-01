@@ -177,8 +177,8 @@ pub enum CellValue {
     Empty,
     /// Numeric value (float)
     Number(f64),
-    /// Text/String value
-    Text(String),
+    /// Text/String value (interned via `Arc<str>` for memory-efficient sharing)
+    Text(Arc<str>),
     /// Boolean value
     Boolean(bool),
     /// Formula with optional cached result/error

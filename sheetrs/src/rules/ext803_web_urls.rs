@@ -256,6 +256,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_url_in_text_cell() {
@@ -266,7 +267,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text("https://example.com".to_string()),
+                value: CellValue::Text(Arc::from("https://example.com")),
             },
         );
 
@@ -302,9 +303,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text(
-                    "Check https://example.com and https://test.org".to_string(),
-                ),
+                value: CellValue::Text(Arc::from("Check https://example.com and https://test.org")),
             },
         );
 

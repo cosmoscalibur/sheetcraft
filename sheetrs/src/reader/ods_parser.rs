@@ -1403,7 +1403,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                     if let Ok(n) = val_str.parse::<f64>() {
                                                         CellValue::Number(n)
                                                     } else {
-                                                        CellValue::Text(val_str)
+                                                        CellValue::Text(Arc::from(val_str.as_str()))
                                                     }
                                                 }
                                                 b"office:date-value" => {
@@ -1411,13 +1411,13 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                     if let Some(n) = parse_ods_date(&val_str) {
                                                         CellValue::Number(n)
                                                     } else {
-                                                        CellValue::Text(val_str)
+                                                        CellValue::Text(Arc::from(val_str.as_str()))
                                                     }
                                                 }
                                                 b"office:boolean-value" => {
                                                     CellValue::Boolean(val_str == "true")
                                                 }
-                                                _ => CellValue::Text(val_str),
+                                                _ => CellValue::Text(Arc::from(val_str.as_str())),
                                             };
                                             has_value = true;
                                         }
@@ -1479,7 +1479,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     has_value = true;
                                 } else if !has_value {
                                     // Only use text:p content if we don't have a value from attributes
-                                    value = CellValue::Text(text_content);
+                                    value = CellValue::Text(Arc::from(text_content.as_str()));
                                     has_value = true;
                                 }
                             }
@@ -1520,7 +1520,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         && let CellValue::Number(n) = cell_value
                                     {
                                         // Convert number to text
-                                        cell_value = CellValue::Text(n.to_string());
+                                        cell_value =
+                                            CellValue::Text(Arc::from(n.to_string().as_str()));
                                     }
 
                                     for r in 0..row_repeated {
@@ -2409,30 +2410,30 @@ mod tests {
         // (0, 0) -> "Spanned"
         assert_eq!(
             sheet.cells.get(&(0, 0)).unwrap().value,
-            CellValue::Text("Spanned".to_string())
+            CellValue::Text(Arc::from("Spanned"))
         );
         // (0, 1) -> Covered (usually not in map if empty)
         // (0, 2) -> "Target" (This would be (0, 3) in the buggy version)
         assert_eq!(
             sheet.cells.get(&(0, 2)).unwrap().value,
-            CellValue::Text("Target".to_string())
+            CellValue::Text(Arc::from("Target"))
         );
 
         // Row 2
         // (1, 0) -> "Repeated"
         assert_eq!(
             sheet.cells.get(&(1, 0)).unwrap().value,
-            CellValue::Text("Repeated".to_string())
+            CellValue::Text(Arc::from("Repeated"))
         );
         // (1, 1) -> "Repeated"
         assert_eq!(
             sheet.cells.get(&(1, 1)).unwrap().value,
-            CellValue::Text("Repeated".to_string())
+            CellValue::Text(Arc::from("Repeated"))
         );
         // (1, 2) -> "AfterRepeated"
         assert_eq!(
             sheet.cells.get(&(1, 2)).unwrap().value,
-            CellValue::Text("AfterRepeated".to_string())
+            CellValue::Text(Arc::from("AfterRepeated"))
         );
     }
 
@@ -2445,7 +2446,7 @@ mod tests {
             Cell {
                 row: 5,
                 col: 3,
-                value: CellValue::Text("test".to_string()),
+                value: CellValue::Text(Arc::from("test")),
                 ..Default::default()
             },
         );
@@ -2478,7 +2479,7 @@ mod tests {
             Cell {
                 row: 1,
                 col: 1,
-                value: CellValue::Text("M".to_string()),
+                value: CellValue::Text(Arc::from("M")),
                 ..Default::default()
             },
         );

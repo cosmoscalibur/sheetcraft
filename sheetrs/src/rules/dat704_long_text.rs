@@ -151,6 +151,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_long_text_cell() {
@@ -163,7 +164,7 @@ mod tests {
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::Text(long_text),
+                value: CellValue::Text(Arc::from(long_text.as_str())),
             },
         );
 
