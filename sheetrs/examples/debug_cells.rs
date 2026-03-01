@@ -26,6 +26,7 @@ fn main() -> anyhow::Result<()> {
                 println!("Cell C3 found:");
                 println!("  Row: {}, Col: {}", cell.row, cell.col);
                 println!("  Value: {:?}", cell.value);
+                println!("  Formula: {:?}", cell.formula);
                 println!("  Num Format: {:?}", cell.num_fmt);
 
                 match &cell.value {
@@ -43,12 +44,11 @@ fn main() -> anyhow::Result<()> {
                     CellValue::Boolean(b) => {
                         println!("  -> Boolean value: {}", b);
                     }
-                    CellValue::Formula {
-                        formula,
-                        cached_error,
-                    } => {
-                        println!("  -> Formula: {}", formula);
-                        println!("  -> Cached error: {:?}", cached_error);
+                    CellValue::Error(e) => {
+                        println!("  -> Error: {}", e);
+                        if let Some(f) = &cell.formula {
+                            println!("  -> Formula: {}", f);
+                        }
                     }
                     CellValue::Empty => {
                         println!("  -> Empty cell");

@@ -33,7 +33,7 @@ impl LinterRule for ErrorCellsRule {
                 if cell.value.is_error() {
                     error_found =
                         Some(cell.value.as_error().unwrap_or("Unknown error").to_string());
-                } else if let Some(formula) = cell.value.as_formula() {
+                } else if let Some(formula) = cell.as_formula() {
                     // Check for standard error literals in the formula string
                     let error_literals = [
                         "#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A",
@@ -72,6 +72,7 @@ mod tests {
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_error_cells_detection() {
@@ -79,15 +80,17 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula_with_error("", "#DIV/0!".to_string()),
+                value: CellValue::Error(Arc::from("#DIV/0!")),
             },
         );
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -130,20 +133,22 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(A1, [#REF!])")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(A1, [#REF!])".to_string()),
+                value: CellValue::Empty,
             },
         );
         // Standard ODS-like relative ref error or text error
         cells.insert(
             (1, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=#N/A")),
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::formula("=#N/A".to_string()),
+                value: CellValue::Empty,
             },
         );
 

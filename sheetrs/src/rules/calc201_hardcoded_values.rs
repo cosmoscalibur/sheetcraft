@@ -6,7 +6,7 @@
 
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::{Cell, CellValue, Sheet};
+use crate::reader::{Cell, Sheet};
 use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
@@ -145,7 +145,7 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
     }
 
     fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
-        if let CellValue::Formula { formula, .. } = &cell.value {
+        if let Some(formula) = cell.as_formula() {
             let ignored_values = self
                 .config
                 .get_param_float_array("ignore_hardcoded_num_values", Some(&sheet.name))
@@ -193,6 +193,7 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
 mod tests {
     use super::*;
     use crate::reader::Workbook;
+    use crate::reader::workbook::CellValue;
     use crate::reader::{Cell, Sheet};
     use crate::rules::walker::WorkbookWalker;
     use std::collections::HashMap;
@@ -213,37 +214,41 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=123+A1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=123+A1".to_string()),
+                value: CellValue::Empty,
             },
         ); // 123 (int)
         cells.insert(
             (0, 1),
             Cell {
+                formula: Some(<Box<str>>::from("=0+1.5")),
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::formula("=0+1.5".to_string()),
+                value: CellValue::Empty,
             },
         ); // 0 (ignored), 1.5 (float)
         cells.insert(
             (0, 2),
             Cell {
+                formula: Some(<Box<str>>::from(r#"=IF(A1>10, "Value: 5", 100)"#)),
                 num_fmt: None,
                 row: 0,
                 col: 2,
-                value: CellValue::formula(r#"=IF(A1>10, "Value: 5", 100)"#.to_string()),
+                value: CellValue::Empty,
             },
         ); // 10 (pow10), 5 (string, ignored by list), 100 (pow10)
         cells.insert(
             (0, 3),
             Cell {
+                formula: Some(<Box<str>>::from("=0.1+0.01")),
                 num_fmt: None,
                 row: 0,
                 col: 3,
-                value: CellValue::formula("=0.1+0.01".to_string()),
+                value: CellValue::Empty,
             },
         ); // 0.1 (pow10), 0.01 (pow10)
 
@@ -320,10 +325,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A2*1.5+3.14+42")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=A2*1.5+3.14+42".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -360,20 +366,22 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=[1]Sheet1!A1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=[1]Sheet1!A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
         cells.insert(
             (0, 1),
             Cell {
+                formula: Some(<Box<str>>::from("=[2]Data!B5")),
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::formula("=[2]Data!B5".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -382,10 +390,11 @@ mod tests {
         cells.insert(
             (0, 2),
             Cell {
+                formula: Some(<Box<str>>::from("=[1]Sheet1!A1+6")),
                 num_fmt: None,
                 row: 0,
                 col: 2,
-                value: CellValue::formula("=[1]Sheet1!A1+6".to_string()),
+                value: CellValue::Empty,
             },
         );
 

@@ -44,7 +44,7 @@ impl LinterRule for ExternalWorkbooksRule {
             let mut workbook_cells: Vec<(u32, u32, usize)> = Vec::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let indices = extract_external_workbook_indices(formula);
                     for idx in indices {
                         workbook_cells.push((cell.row, cell.col, idx));
@@ -205,10 +205,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=[1]Sheet1!A1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=[1]Sheet1!A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 

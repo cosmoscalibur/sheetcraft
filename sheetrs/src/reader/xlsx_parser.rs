@@ -870,19 +870,14 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                             row,
                             col,
                             value: value.clone(),
+                            formula: None,
                             num_fmt,
                         };
                         if let Some(mut f) = formula {
                             if f.starts_with('=') {
                                 f = f[1..].to_string();
                             }
-                            cell.value = match cell.value {
-                                CellValue::Formula {
-                                    cached_error: Some(err),
-                                    ..
-                                } => CellValue::formula_with_error(f, err),
-                                _ => CellValue::formula(f),
-                            };
+                            cell.formula = Some(f.into());
                         }
                         cells.insert((row, col), cell);
                     }
@@ -975,6 +970,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                                 row,
                                 col,
                                 value: CellValue::Empty,
+                                formula: None,
                                 num_fmt,
                             },
                         );
@@ -1194,9 +1190,9 @@ fn parse_cell_contents<R: std::io::BufRead>(
         // as a placeholder even if they aren't real errors. We ignore #VALUE! if it's an array.
         let looks_like_array = is_array_formula || f.contains(':');
         if looks_like_array && err == "#VALUE!" {
-            value = CellValue::formula(f.clone());
+            // Array formula — keep value as-is (already set), formula will be set later
         } else {
-            value = CellValue::formula_with_error(f.clone(), err);
+            value = CellValue::Error(Arc::from(err.as_str()));
         }
     }
 

@@ -54,7 +54,7 @@ impl LinterRule for VolatileFunctionsRule {
                 std::collections::HashMap::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let formula_upper = formula.to_uppercase();
 
                     for func in VOLATILE_FUNCTIONS {
@@ -170,10 +170,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=NOW()")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=NOW()".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -212,19 +213,21 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=RAND()")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=RAND()".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (1, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=TODAY()")),
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::formula("=TODAY()".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -261,10 +264,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=now()")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=now()".to_string()),
+                value: CellValue::Empty,
             },
         );
 

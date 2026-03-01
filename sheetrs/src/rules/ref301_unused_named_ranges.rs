@@ -39,7 +39,7 @@ impl LinterRule for UnusedNamedRangesRule {
         let mut used_names = HashSet::new();
         for sheet in &workbook.sheets {
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     for name in &named_ranges {
                         if formula.contains(name) {
                             used_names.insert(*name);
@@ -78,10 +78,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=UsedRange")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=UsedRange".to_string()),
+                value: CellValue::Empty,
             },
         );
 

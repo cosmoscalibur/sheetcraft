@@ -33,7 +33,7 @@ impl LinterRule for DuplicateFormulasRule {
             let mut formula_cells: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     // Normalize formula for comparison (trim whitespace)
                     let normalized = formula.trim().to_string();
                     formula_cells
@@ -154,28 +154,31 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1+B1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=A1+B1".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (1, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1+B1")),
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::formula("=A1+B1".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (2, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1+B1")),
                 num_fmt: None,
                 row: 2,
                 col: 0,
-                value: CellValue::formula("=A1+B1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -214,19 +217,21 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1+B1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=A1+B1".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (1, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A2+B2")),
                 num_fmt: None,
                 row: 1,
                 col: 0,
-                value: CellValue::formula("=A2+B2".to_string()),
+                value: CellValue::Empty,
             },
         );
 

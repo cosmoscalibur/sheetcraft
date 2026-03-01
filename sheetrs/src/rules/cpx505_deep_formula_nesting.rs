@@ -50,7 +50,7 @@ impl LinterRule for DeepFormulaNestingRule {
             let mut deep_nesting_cells: Vec<(u32, u32)> = Vec::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let nesting_depth = calculate_nesting_depth(formula);
 
                     if nesting_depth > self.max_nesting {
@@ -181,12 +181,13 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from(
+                    "=IF(A1,IF(B1,IF(C1,IF(D1,IF(E1,IF(F1,1,0),0),0),0),0),0)",
+                )),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula(
-                    "=IF(A1,IF(B1,IF(C1,IF(D1,IF(E1,IF(F1,1,0),0),0),0),0),0)".to_string(),
-                ),
+                value: CellValue::Empty,
             },
         );
 
@@ -226,10 +227,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=IF(A1,IF(B1,IF(C1,1,0),0),0)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=IF(A1,IF(B1,IF(C1,1,0),0),0)".to_string()),
+                value: CellValue::Empty,
             },
         );
 

@@ -49,7 +49,7 @@ impl LinterRule for LongFormulaRule {
             let mut long_formula_cells: Vec<(u32, u32)> = Vec::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula()
+                if let Some(formula) = cell.as_formula()
                     && formula.len() > threshold
                 {
                     long_formula_cells.push((cell.row, cell.col));
@@ -159,10 +159,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from(long_formula)),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula(long_formula),
+                value: CellValue::Empty,
             },
         );
 

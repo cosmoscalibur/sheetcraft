@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sheetrs::reader::{CellValue, read_workbook};
+use sheetrs::reader::read_workbook;
 use std::env;
 
 fn main() -> Result<()> {
@@ -27,30 +27,26 @@ fn main() -> Result<()> {
         let mut error_cells = Vec::new();
 
         for cell in sheet.all_cells() {
-            if let CellValue::Formula {
-                formula,
-                cached_error,
-            } = &cell.value
-            {
-                if let Some(error) = cached_error {
-                    error_cells.push((cell.row, cell.col, formula.clone(), error.clone()));
-                } else {
-                    // Check if formula contains error literals
-                    let error_literals = [
-                        "#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A",
-                        "#SPILL!", "#CALC!",
-                    ];
+            // Check for error values
+            if let Some(error) = cell.value.as_error() {
+                let formula = cell.as_formula().unwrap_or("");
+                error_cells.push((cell.row, cell.col, formula.to_string(), error.to_string()));
+            } else if let Some(formula) = cell.as_formula() {
+                // Check if formula text contains error literals
+                let error_literals = [
+                    "#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#SPILL!",
+                    "#CALC!",
+                ];
 
-                    for err_lit in error_literals {
-                        if formula.contains(err_lit) {
-                            error_cells.push((
-                                cell.row,
-                                cell.col,
-                                formula.clone(),
-                                err_lit.to_string(),
-                            ));
-                            break;
-                        }
+                for err_lit in error_literals {
+                    if formula.contains(err_lit) {
+                        error_cells.push((
+                            cell.row,
+                            cell.col,
+                            formula.to_string(),
+                            err_lit.to_string(),
+                        ));
+                        break;
                     }
                 }
             }

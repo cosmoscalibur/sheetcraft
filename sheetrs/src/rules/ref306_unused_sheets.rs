@@ -57,7 +57,7 @@ impl LinterRule for UnusedSheetsRule {
         // Check formulas for sheet references
         for sheet in &workbook.sheets {
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     for other_sheet in &all_sheets {
                         let simple_ref = format!("{}!", other_sheet);
                         let quoted_ref = format!("'{}'!", other_sheet);
@@ -117,7 +117,7 @@ impl LinterRule for UnusedSheetsRule {
         for sheet in &workbook.sheets {
             let is_only_sheet = workbook.sheets.len() == 1;
             let is_referenced = referenced_sheets.contains(sheet.name.as_str());
-            let has_formulas = sheet.cells.values().any(|c| c.value.is_formula());
+            let has_formulas = sheet.cells.values().any(|c| c.is_formula());
             let has_content = sheet.cells.values().any(|c| !c.value.is_empty());
 
             let is_hidden = workbook.hidden_sheets.contains(&sheet.name);
@@ -191,10 +191,11 @@ mod tests {
         cells1.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=Sheet2!A1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=Sheet2!A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -217,6 +218,7 @@ mod tests {
         cells2.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -243,6 +245,7 @@ mod tests {
         cells3.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,

@@ -96,7 +96,7 @@ fn main() {
 
     let (r, c) = parse_cell_ref(r_name);
     let cell = sheet.cells.get(&(r, c)).expect("Cell not found");
-    let formula = cell.value.as_formula().expect("Not a formula");
+    let formula = cell.as_formula().expect("Not a formula");
 
     println!("Formula: {}", formula);
     let refs = extract_cell_references(formula, &sheet_names, s_name, false);

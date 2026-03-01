@@ -161,12 +161,32 @@ pub struct Cell {
     pub row: u32,
     /// 0-based column index
     pub col: u32,
-    /// The value or formula contained in the cell
+    /// The typed value of the cell (number, text, boolean, error, or empty).
     pub value: CellValue,
-    /// The number format string applied to the cell (e.g., "0.00", "mm/dd/yyyy")
+    /// The formula expression (without leading `=`), if any.
+    ///
+    /// A formula is metadata orthogonal to the value: a cell with `formula: Some("SUM(A1:A10)")`
+    /// and `value: Number(42.0)` is a formula cell whose cached result is 42.
+    ///
+    /// Boxed to minimize `Cell` struct size: `Option<Box<str>>` is 8 bytes vs
+    /// `Option<String>`'s 24 bytes, and formula strings are write-once/read-many.
+    pub formula: Option<Box<str>>,
+    /// The number format string applied to the cell (e.g., "0.00", "mm/dd/yyyy").
     ///
     /// Interned via `Arc<str>` so cells sharing the same format reuse a single allocation.
     pub num_fmt: Option<Arc<str>>,
+}
+
+impl Cell {
+    /// Check if the cell contains a formula.
+    pub fn is_formula(&self) -> bool {
+        self.formula.is_some()
+    }
+
+    /// Get the formula expression if this is a formula cell.
+    pub fn as_formula(&self) -> Option<&str> {
+        self.formula.as_deref()
+    }
 }
 
 /// Cell value types
@@ -181,69 +201,26 @@ pub enum CellValue {
     Text(Arc<str>),
     /// Boolean value
     Boolean(bool),
-    /// Formula with optional cached result/error
-    Formula {
-        /// The formula string (without leading =)
-        formula: String,
-        /// Cached error message (e.g. #REF!, #DIV/0!) if present
-        cached_error: Option<String>,
-    },
+    /// Error value (e.g., "#REF!", "#DIV/0!", "#N/A")
+    Error(Arc<str>),
 }
 
 impl CellValue {
-    /// Check if the cell contains an error
+    /// Check if the cell contains an error.
     pub fn is_error(&self) -> bool {
-        matches!(
-            self,
-            CellValue::Formula {
-                cached_error: Some(_),
-                ..
-            }
-        )
+        matches!(self, CellValue::Error(_))
     }
 
-    /// Check if the cell is empty
+    /// Check if the cell is empty.
     pub fn is_empty(&self) -> bool {
         matches!(self, CellValue::Empty)
     }
 
-    /// Check if the cell contains a formula
-    pub fn is_formula(&self) -> bool {
-        matches!(self, CellValue::Formula { .. })
-    }
-
-    /// Get the error value if this is an error cell
+    /// Get the error text if this is an error cell.
     pub fn as_error(&self) -> Option<&str> {
         match self {
-            CellValue::Formula {
-                cached_error: Some(e),
-                ..
-            } => Some(e),
+            CellValue::Error(e) => Some(e),
             _ => None,
-        }
-    }
-
-    /// Get the formula if this is a formula cell
-    pub fn as_formula(&self) -> Option<&str> {
-        match self {
-            CellValue::Formula { formula, .. } => Some(formula),
-            _ => None,
-        }
-    }
-
-    /// Create a formula cell without error
-    pub fn formula(f: impl Into<String>) -> Self {
-        CellValue::Formula {
-            formula: f.into(),
-            cached_error: None,
-        }
-    }
-
-    /// Create a formula cell with cached error
-    pub fn formula_with_error(f: impl Into<String>, error: impl Into<String>) -> Self {
-        CellValue::Formula {
-            formula: f.into(),
-            cached_error: Some(error.into()),
         }
     }
 }

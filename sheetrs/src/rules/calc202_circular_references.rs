@@ -111,7 +111,7 @@ impl LinterRule for CircularReferenceRule {
         // 1. Build the global dependency graph
         for sheet in &workbook.sheets {
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let refs = extract_cell_references(
                         formula,
                         &self.cell_ref_pattern,
@@ -177,7 +177,7 @@ impl WalkerRule for CircularReferenceRule {
     }
 
     fn on_cell(&self, sheet: &Sheet, cell: &Cell, ctx: &mut LinterContext) -> Vec<Violation> {
-        if let Some(formula) = cell.value.as_formula() {
+        if let Some(formula) = cell.as_formula() {
             let refs = extract_cell_references_walker(
                 formula,
                 &self.cell_ref_pattern,
@@ -482,10 +482,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1+1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=A1+1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -504,19 +505,21 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=B1")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=B1".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (0, 1),
             Cell {
+                formula: Some(<Box<str>>::from("=A1")),
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::formula("=A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -537,19 +540,21 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(B1:B3)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(B1:B3)".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (1, 1),
             Cell {
+                formula: Some(<Box<str>>::from("=A1")),
                 num_fmt: None,
                 row: 1,
                 col: 1,
-                value: CellValue::formula("=A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -569,19 +574,21 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(A2:A3)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(A2:A3)".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (2, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=A1")),
                 num_fmt: None,
                 row: 2,
                 col: 0,
-                value: CellValue::formula("=A1".to_string()),
+                value: CellValue::Empty,
             },
         );
 

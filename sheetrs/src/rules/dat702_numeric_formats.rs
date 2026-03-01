@@ -158,6 +158,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -168,6 +169,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -179,6 +181,7 @@ mod tests {
         cells.insert(
             (2, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 2,
                 col: 0,
@@ -190,6 +193,7 @@ mod tests {
         cells.insert(
             (3, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 3,
                 col: 0,

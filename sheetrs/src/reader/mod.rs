@@ -247,10 +247,7 @@ mod date_format_parity_tests {
         );
         // Verify it's a formula or numeric value
         assert!(
-            matches!(
-                d8_ods.value,
-                CellValue::Formula { .. } | CellValue::Number(_)
-            ),
+            d8_ods.is_formula() || matches!(d8_ods.value, CellValue::Number(_)),
             "ODS D8 should be formula or number"
         );
 
@@ -323,25 +320,34 @@ mod date_format_parity_tests {
             // Same cell positions
             assert_eq!(pos_ods, pos_xlsx, "Date cells should be at same positions");
 
-            // Same cell values
-            match (&cell_ods.value, &cell_xlsx.value) {
-                (CellValue::Number(v1), CellValue::Number(v2)) => {
-                    assert!(
-                        (v1 - v2).abs() < 0.0001,
-                        "Date values should match at {:?}: ODS={}, XLSX={}",
-                        pos_ods,
-                        v1,
-                        v2
-                    );
-                }
-                _ => {
-                    // For formulas or other types, just ensure both are the same type
-                    assert_eq!(
-                        std::mem::discriminant(&cell_ods.value),
-                        std::mem::discriminant(&cell_xlsx.value),
-                        "Date cell value types should match at {:?}",
-                        pos_ods
-                    );
+            // Same cell values (skip tight comparison for formula cells — cached values
+            // may differ between ODS and XLSX due to epoch and recalculation differences)
+            if cell_ods.is_formula() || cell_xlsx.is_formula() {
+                assert_eq!(
+                    std::mem::discriminant(&cell_ods.value),
+                    std::mem::discriminant(&cell_xlsx.value),
+                    "Date cell value types should match at {:?}",
+                    pos_ods
+                );
+            } else {
+                match (&cell_ods.value, &cell_xlsx.value) {
+                    (CellValue::Number(v1), CellValue::Number(v2)) => {
+                        assert!(
+                            (v1 - v2).abs() < 0.0001,
+                            "Date values should match at {:?}: ODS={}, XLSX={}",
+                            pos_ods,
+                            v1,
+                            v2
+                        );
+                    }
+                    _ => {
+                        assert_eq!(
+                            std::mem::discriminant(&cell_ods.value),
+                            std::mem::discriminant(&cell_xlsx.value),
+                            "Date cell value types should match at {:?}",
+                            pos_ods
+                        );
+                    }
                 }
             }
 
@@ -414,13 +420,7 @@ mod external_workbook_parity_tests {
             wb.sheets
                 .get(sheet_idx)
                 .and_then(|s| s.cells.get(&(row, col)))
-                .and_then(|c| {
-                    if let CellValue::Formula { ref formula, .. } = c.value {
-                        Some(formula.clone())
-                    } else {
-                        None
-                    }
-                })
+                .and_then(|c| c.formula.clone())
         };
 
         let ods_formula =

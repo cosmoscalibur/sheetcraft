@@ -264,6 +264,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -300,6 +301,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,

@@ -79,10 +79,7 @@ impl LinterRule for InconsistentDateFormatRule {
                 // Only date cells are relevant.
                 // In Excel, dates are numbers. In ODS, they might be stored as text (ISO strings) with a style.
                 // Formulas can also result in dates.
-                let is_candidate = matches!(
-                    cell.value,
-                    CellValue::Number(_) | CellValue::Text(_) | CellValue::Formula { .. }
-                );
+                let is_candidate = matches!(cell.value, CellValue::Number(_) | CellValue::Text(_));
 
                 if is_candidate && let Some(fmt) = &cell.num_fmt {
                     // Normalize format: remove escape backslashes common in XLSX (e.g. "mm\-dd\-yyyy" -> "mm-dd-yyyy")
@@ -131,6 +128,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("mm/dd/yyyy")),
                 row: 0,
                 col: 0,
@@ -141,6 +139,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("dd-mm-yyyy")),
                 row: 0,
                 col: 1,
@@ -151,6 +150,7 @@ mod tests {
         cells.insert(
             (0, 2),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("General")),
                 row: 0,
                 col: 2,

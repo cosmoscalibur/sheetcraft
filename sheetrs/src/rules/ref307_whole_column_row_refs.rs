@@ -60,7 +60,7 @@ impl LinterRule for WholeColumnRowRefsRule {
             let mut row_ref_cells: Vec<(u32, u32)> = Vec::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let formula_upper = formula.to_uppercase();
 
                     let has_column_ref = self.column_pattern.is_match(&formula_upper);
@@ -191,10 +191,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(A:A)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(A:A)".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -233,10 +234,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(1:1)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(1:1)".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -275,10 +277,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(A1:A10)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=SUM(A1:A10)".to_string()),
+                value: CellValue::Empty,
             },
         );
 

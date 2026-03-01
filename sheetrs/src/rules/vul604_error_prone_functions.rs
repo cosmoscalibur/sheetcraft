@@ -4,7 +4,7 @@
 
 use super::{LinterRule, RuleCategory};
 use crate::config::LinterConfig;
-use crate::reader::{CellValue, Workbook};
+use crate::reader::Workbook;
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 
 /// Rule that detects error-prone functions like VLOOKUP and HLOOKUP.
@@ -34,7 +34,7 @@ impl LinterRule for ErrorProneFunctionsRule {
 
         for sheet in &workbook.sheets {
             for ((row, col), cell) in &sheet.cells {
-                if let CellValue::Formula { formula, .. } = &cell.value {
+                if let Some(formula) = cell.as_formula() {
                     let upper_formula = formula.to_uppercase();
                     if upper_formula.contains("VLOOKUP(") || upper_formula.contains("HLOOKUP(") {
                         violations.push(Violation::new(
@@ -62,6 +62,7 @@ impl LinterRule for ErrorProneFunctionsRule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::workbook::CellValue;
     use crate::reader::{Cell, Sheet};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -72,28 +73,31 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=VLOOKUP(A1, B:C, 2, FALSE)")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=VLOOKUP(A1, B:C, 2, FALSE)".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (0, 1),
             Cell {
+                formula: Some(<Box<str>>::from("=HLOOKUP(A1, B:C, 2, FALSE)")),
                 num_fmt: None,
                 row: 0,
                 col: 1,
-                value: CellValue::formula("=HLOOKUP(A1, B:C, 2, FALSE)".to_string()),
+                value: CellValue::Empty,
             },
         );
         cells.insert(
             (0, 2),
             Cell {
+                formula: Some(<Box<str>>::from("=SUM(A1:A10)")),
                 num_fmt: None,
                 row: 0,
                 col: 2,
-                value: CellValue::formula("=SUM(A1:A10)".to_string()),
+                value: CellValue::Empty,
             },
         );
 

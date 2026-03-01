@@ -1475,7 +1475,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             // Use text content if we have it and no other value
                             if !text_content.is_empty() {
                                 if is_error_cell {
-                                    value = CellValue::formula_with_error("", text_content);
+                                    value = CellValue::Error(Arc::from(text_content.as_str()));
                                     has_value = true;
                                 } else if !has_value {
                                     // Only use text:p content if we don't have a value from attributes
@@ -1497,15 +1497,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     // Just advance the column counter
                                 } else {
                                     let mut cell_value = value;
-                                    if let Some(f) = formula {
-                                        cell_value = match cell_value {
-                                            CellValue::Formula {
-                                                cached_error: Some(msg),
-                                                ..
-                                            } => CellValue::formula_with_error(f, msg),
-                                            _ => CellValue::formula(f),
-                                        };
-                                    }
+                                    let formula_for_cell = formula;
 
                                     // Look up format string from style
                                     let num_fmt = if !style_name.is_empty() {
@@ -1530,6 +1522,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                 row: current_row + r,
                                                 col: current_col + c,
                                                 value: cell_value.clone(),
+                                                formula: formula_for_cell.as_deref().map(Box::from),
                                                 num_fmt: num_fmt.clone(),
                                             };
                                             sheet
@@ -1617,8 +1610,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                 {
                                     // Skip storing these cells
                                 } else {
-                                    let cell_value =
-                                        formula.map(CellValue::formula).unwrap_or(CellValue::Empty);
+                                    let cell_value = CellValue::Empty;
+                                    let formula_for_cell = formula;
 
                                     // Look up format string from style
                                     let num_fmt = if !style_name.is_empty() {
@@ -1633,6 +1626,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                 row: current_row + r,
                                                 col: current_col + c,
                                                 value: cell_value.clone(),
+                                                formula: formula_for_cell.as_deref().map(Box::from),
                                                 num_fmt: num_fmt.clone(),
                                             };
                                             sheet

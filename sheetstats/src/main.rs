@@ -110,10 +110,7 @@ fn calculate_formula_stats(workbook: &sheetrs::reader::Workbook) -> Vec<FormulaS
     let mut sheet_formulas: Vec<(String, usize)> = Vec::new();
 
     for sheet in &workbook.sheets {
-        let formula_count = sheet
-            .all_cells()
-            .filter(|cell| cell.value.is_formula())
-            .count();
+        let formula_count = sheet.all_cells().filter(|cell| cell.is_formula()).count();
 
         total_formulas += formula_count;
         sheet_formulas.push((sheet.name.clone(), formula_count));

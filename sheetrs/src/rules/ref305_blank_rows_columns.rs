@@ -363,6 +363,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -372,6 +373,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -383,6 +385,7 @@ mod tests {
         cells.insert(
             (4, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 4,
                 col: 0,
@@ -392,6 +395,7 @@ mod tests {
         cells.insert(
             (4, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 4,
                 col: 1,
@@ -438,6 +442,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -447,6 +452,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -458,6 +464,7 @@ mod tests {
         cells.insert(
             (0, 4),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 4,
@@ -467,6 +474,7 @@ mod tests {
         cells.insert(
             (1, 4),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 4,
@@ -512,6 +520,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -521,6 +530,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -530,6 +540,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -539,6 +550,7 @@ mod tests {
         cells.insert(
             (1, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 1,
@@ -580,6 +592,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -589,6 +602,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -600,6 +614,7 @@ mod tests {
         cells.insert(
             (2, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 2,
                 col: 0,
@@ -609,6 +624,7 @@ mod tests {
         cells.insert(
             (2, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 2,
                 col: 1,
@@ -651,6 +667,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -660,6 +677,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -671,6 +689,7 @@ mod tests {
         cells.insert(
             (3, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 3,
                 col: 0,
@@ -680,6 +699,7 @@ mod tests {
         cells.insert(
             (3, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 3,
                 col: 1,
@@ -722,6 +742,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -731,6 +752,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -742,6 +764,7 @@ mod tests {
         cells.insert(
             (0, 2),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 2,
@@ -751,6 +774,7 @@ mod tests {
         cells.insert(
             (1, 2),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 2,
@@ -793,6 +817,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -802,6 +827,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -813,6 +839,7 @@ mod tests {
         cells.insert(
             (0, 3),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 3,
@@ -822,6 +849,7 @@ mod tests {
         cells.insert(
             (1, 3),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 3,
@@ -864,6 +892,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -873,6 +902,7 @@ mod tests {
         cells.insert(
             (0, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -884,6 +914,7 @@ mod tests {
         cells.insert(
             (2, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 2,
                 col: 0,
@@ -893,6 +924,7 @@ mod tests {
         cells.insert(
             (2, 1),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 2,
                 col: 1,
@@ -903,6 +935,7 @@ mod tests {
         cells.insert(
             (1, 5),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 1,
                 col: 5,
@@ -984,6 +1017,7 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -994,6 +1028,7 @@ mod tests {
         cells.insert(
             (1, 0),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("custom")),
                 row: 1,
                 col: 0,
@@ -1003,6 +1038,7 @@ mod tests {
         cells.insert(
             (2, 0),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("custom")),
                 row: 2,
                 col: 0,
@@ -1012,6 +1048,7 @@ mod tests {
         cells.insert(
             (3, 0),
             Cell {
+                formula: None,
                 num_fmt: Some(Arc::from("custom")),
                 row: 3,
                 col: 0,
@@ -1022,6 +1059,7 @@ mod tests {
         cells.insert(
             (4, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 4,
                 col: 0,

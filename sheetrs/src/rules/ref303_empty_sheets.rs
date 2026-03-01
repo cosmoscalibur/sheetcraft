@@ -57,7 +57,7 @@ impl LinterRule for EmptySheetsRule {
         // Check formulas for sheet references
         for sheet in &workbook.sheets {
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let s = formula;
                     for other_sheet in &all_sheets {
                         let simple_ref = format!("{}!", other_sheet);
@@ -112,7 +112,7 @@ impl LinterRule for EmptySheetsRule {
         for sheet in &workbook.sheets {
             let is_only_sheet = workbook.sheets.len() == 1;
             let is_referenced = referenced_sheets.contains(sheet.name.as_str());
-            let has_formulas = sheet.cells.values().any(|c| c.value.is_formula());
+            let has_formulas = sheet.cells.values().any(|c| c.is_formula());
 
             // Check if sheet has content (cells with values)
             // existing 'has_content' logic check:
@@ -182,6 +182,7 @@ mod tests {
         cells1.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -202,6 +203,7 @@ mod tests {
         cells2.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -246,6 +248,7 @@ mod tests {
         cells1.insert(
             (0, 0),
             Cell {
+                formula: None,
                 num_fmt: None,
                 row: 0,
                 col: 0,

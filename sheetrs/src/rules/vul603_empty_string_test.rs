@@ -57,7 +57,7 @@ impl LinterRule for EmptyStringTestRule {
             let mut empty_test_cells: Vec<(u32, u32)> = Vec::new();
 
             for cell in sheet.all_cells() {
-                if let Some(formula) = cell.value.as_formula() {
+                if let Some(formula) = cell.as_formula() {
                     let formula_upper = formula.to_uppercase();
 
                     // Check if any pattern matches
@@ -171,10 +171,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from(r#"=IF(A1="","Empty","Not Empty")"#)),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula(r#"=IF(A1="","Empty","Not Empty")"#.to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -213,10 +214,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from(r#"=IF(A1<>"","Not Empty","Empty")"#)),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula(r#"=IF(A1<>"","Not Empty","Empty")"#.to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -254,10 +256,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=IF(LEN(A1)=0,\"Empty\",\"Not Empty\")")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=IF(LEN(A1)=0,\"Empty\",\"Not Empty\")".to_string()),
+                value: CellValue::Empty,
             },
         );
 
@@ -295,10 +298,11 @@ mod tests {
         cells.insert(
             (0, 0),
             Cell {
+                formula: Some(<Box<str>>::from("=IF(ISBLANK(A1),\"Empty\",\"Not Empty\")")),
                 num_fmt: None,
                 row: 0,
                 col: 0,
-                value: CellValue::formula("=IF(ISBLANK(A1),\"Empty\",\"Not Empty\")".to_string()),
+                value: CellValue::Empty,
             },
         );
 
