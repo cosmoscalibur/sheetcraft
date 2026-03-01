@@ -120,9 +120,9 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert!(
             violations[0]
-                .message
+                .message()
                 .contains("Sheet has 10 conditional formatting rules")
         );
-        assert!(violations[0].message.contains("Ranges: A1:A10, B1:B10"));
+        assert!(violations[0].message().contains("Ranges: A1:A10, B1:B10"));
     }
 }

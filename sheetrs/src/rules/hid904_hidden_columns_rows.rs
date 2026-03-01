@@ -164,8 +164,8 @@ mod tests {
 
         assert_eq!(violations.len(), 2); // Two ranges: A:C and F
         assert_eq!(violations[0].rule_id, RuleId::Hid904);
-        assert!(violations[0].message.contains("A:C"));
-        assert!(violations[1].message.contains("F"));
+        assert!(violations[0].message().contains("A:C"));
+        assert!(violations[1].message().contains("F"));
     }
 
     #[test]
@@ -194,8 +194,8 @@ mod tests {
 
         assert_eq!(violations.len(), 2); // Two ranges: 1:3 and 11:12
         assert_eq!(violations[0].rule_id, RuleId::Hid904);
-        assert!(violations[0].message.contains("1:3"));
-        assert!(violations[1].message.contains("11:12"));
+        assert!(violations[0].message().contains("1:3"));
+        assert!(violations[1].message().contains("11:12"));
     }
 
     #[test]

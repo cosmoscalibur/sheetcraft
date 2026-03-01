@@ -109,6 +109,6 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref301);
-        assert!(violations[0].message.contains("UnusedRange"));
+        assert!(violations[0].message().contains("UnusedRange"));
     }
 }

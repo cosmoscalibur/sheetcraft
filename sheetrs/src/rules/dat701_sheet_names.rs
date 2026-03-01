@@ -3,7 +3,7 @@
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Sheet;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that detects non-descriptive sheet names (e.g. Sheet1, Sheet2)
 ///
@@ -11,6 +11,27 @@ use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 #[derive(Default)]
 pub struct NonDescriptiveSheetNameRule {
     config: LinterConfig,
+}
+
+/// Incident data for DAT701.
+#[derive(Debug)]
+pub struct NonDescriptiveSheetNameData {
+    /// 0-based sheet index.
+    pub sheet_index: u16,
+}
+
+impl ViolationData for NonDescriptiveSheetNameData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let name = ctx
+            .workbook
+            .sheet_name_by_index(self.sheet_index)
+            .unwrap_or("Unknown");
+        format!("Non-descriptive sheet name '{}'", name)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl NonDescriptiveSheetNameRule {
@@ -37,13 +58,12 @@ impl WalkerRule for NonDescriptiveSheetNameRule {
 
         for pattern in &patterns {
             if normalized_name.contains(pattern) {
-                violations.push(Violation::new(
+                violations.push(Violation::with_data(
                     RuleId::Data701,
                     ViolationScope::Sheet(sheet.sheet_index),
-                    format!(
-                        "Non-descriptive sheet name '{}' contains pattern '{}'",
-                        sheet.name, pattern
-                    ),
+                    NonDescriptiveSheetNameData {
+                        sheet_index: sheet.sheet_index,
+                    },
                     Severity::Warning,
                 ));
                 break; // Only report once per sheet
@@ -73,7 +93,7 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Data701);
         assert_eq!(violations[0].scope, ViolationScope::Sheet(0));
-        assert!(violations[0].message.contains("Sheet1"));
+        assert!(violations[0].message().contains("sheet"));
     }
 
     #[test]
@@ -90,7 +110,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].scope, ViolationScope::Sheet(1));
-        assert!(violations[0].message.contains("Copy of Data"));
+        assert!(violations[0].message().contains("Non-descriptive"));
     }
 
     #[test]

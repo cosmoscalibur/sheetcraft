@@ -121,7 +121,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Err102);
-        assert!(violations[0].message.contains("#DIV/0!"));
+        assert!(violations[0].message().contains("#DIV/0!"));
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 2);
-        let messages: Vec<_> = violations.iter().map(|v| v.message.as_str()).collect();
+        let messages: Vec<_> = violations.iter().map(|v| v.message()).collect();
         assert!(messages.iter().any(|m| m.contains("#REF!")));
         assert!(messages.iter().any(|m| m.contains("#N/A")));
     }

@@ -4,11 +4,33 @@
 
 use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::{Sheet, Workbook};
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
 use anyhow::Result;
 
 /// Rule that detects merged cells
 pub struct MergedCellsRule;
+
+/// Incident data for CPX502.
+#[derive(Debug)]
+pub struct MergedCellsData {
+    /// Range as (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+}
+
+impl ViolationData for MergedCellsData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let (sr, sc, er, ec) = self.range;
+        let start = CellReference::new(sr, sc);
+        let end = CellReference::new(er, ec);
+        format!("Merged cells in range: {}:{}", start, end)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl LinterRule for MergedCellsRule {
     fn id(&self) -> RuleId {
@@ -51,11 +73,12 @@ impl WalkerRule for MergedCellsRule {
         let mut violations = Vec::new();
 
         for &(start_row, start_col, end_row, end_col) in &sheet.merged_cells {
-            let range_str = format_merged_range(start_row, start_col, end_row, end_col);
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::Cpx502,
                 ViolationScope::Sheet(sheet.sheet_index),
-                format!("Merged cells in range: {}", range_str),
+                MergedCellsData {
+                    range: (start_row, start_col, end_row, end_col),
+                },
                 Severity::Warning,
             ));
         }
@@ -97,8 +120,8 @@ mod tests {
 
         assert_eq!(violations.len(), 2);
         assert_eq!(violations[0].rule_id, RuleId::Cpx502);
-        assert!(violations[0].message.contains("A1:C1"));
-        assert!(violations[1].message.contains("A3:A5"));
+        assert!(violations[0].message().contains("A1:C1"));
+        assert!(violations[1].message().contains("A3:A5"));
     }
 
     #[test]

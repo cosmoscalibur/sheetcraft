@@ -5,12 +5,29 @@
 use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 use anyhow::Result;
 
 /// Rule that checks if the workbook has an excessive number of sheets.
 pub struct ExcessiveSheetCountsRule {
     threshold: u32,
+}
+
+/// Incident data for CPX501.
+#[derive(Debug)]
+pub struct ExcessiveSheetCountsData {
+    /// Observed sheet count.
+    pub count: u32,
+}
+
+impl ViolationData for ExcessiveSheetCountsData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!("Workbook has {} sheets", self.count)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl ExcessiveSheetCountsRule {
@@ -72,13 +89,10 @@ impl WalkerRule for ExcessiveSheetCountsRule {
         let sheet_count = workbook.sheets.len() as u32;
 
         if sheet_count > self.threshold {
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::Cpx501,
                 ViolationScope::Book,
-                format!(
-                    "Workbook has {} sheets (threshold: {})",
-                    sheet_count, self.threshold
-                ),
+                ExcessiveSheetCountsData { count: sheet_count },
                 Severity::Warning,
             ));
         }
@@ -125,6 +139,6 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Cpx501);
-        assert!(violations[0].message.contains("60 sheets"));
+        assert!(violations[0].message().contains("60 sheets"));
     }
 }

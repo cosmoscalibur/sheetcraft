@@ -6,7 +6,7 @@
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Default maximum file size threshold in megabytes
 const DEFAULT_MAX_FILE_SIZE_MB: i64 = 10;
@@ -21,6 +21,24 @@ const DEFAULT_MAX_FILE_SIZE_MB: i64 = 10;
 pub struct LargeFileSizeRule {
     /// Maximum file size in bytes
     max_file_size_bytes: u64,
+}
+
+/// Incident data for FILE1001.
+#[derive(Debug)]
+pub struct LargeFileSizeData {
+    /// Observed file size in bytes.
+    pub size_bytes: u64,
+}
+
+impl ViolationData for LargeFileSizeData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let size_mb = self.size_bytes as f64 / (1024.0 * 1024.0);
+        format!("File size {size_mb:.2} MB exceeds limit")
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl LargeFileSizeRule {
@@ -42,12 +60,12 @@ impl LargeFileSizeRule {
 
         let file_size = workbook.file_size_bytes;
         if file_size > self.max_file_size_bytes {
-            let size_mb = file_size as f64 / (1024.0 * 1024.0);
-            let threshold_mb = self.max_file_size_bytes as f64 / (1024.0 * 1024.0);
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::File1001,
                 ViolationScope::Book,
-                format!("File size {size_mb:.2} MB exceeds threshold of {threshold_mb:.0} MB"),
+                LargeFileSizeData {
+                    size_bytes: file_size,
+                },
                 Severity::Warning,
             ));
         }
@@ -104,7 +122,7 @@ mod tests {
         let violations = rule.check_size(&workbook);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::File1001);
-        assert!(violations[0].message.contains("exceeds threshold"));
+        assert!(violations[0].message().contains("exceeds limit"));
     }
 
     #[test]

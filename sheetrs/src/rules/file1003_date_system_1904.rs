@@ -5,7 +5,7 @@
 
 use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that identifies spreadsheets using the 1904 date system.
 ///
@@ -15,6 +15,22 @@ use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 /// - Can cause date values to be off by 4 years and 1 day when shared
 /// - Most modern spreadsheets use the 1900 date system (default)
 pub struct DateSystem1904Rule;
+
+/// Incident data for FILE1003 — no variable fields.
+#[derive(Debug)]
+pub struct DateSystem1904Data;
+
+impl ViolationData for DateSystem1904Data {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        "Workbook uses 1904 date system. This can cause date calculation \
+         issues when sharing files between systems."
+            .to_string()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl DateSystem1904Rule {
     /// Creates a new rule instance.
@@ -28,12 +44,10 @@ impl DateSystem1904Rule {
         let mut violations = Vec::new();
 
         if workbook.date1904 {
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::File1003,
                 ViolationScope::Book,
-                "Workbook uses 1904 date system. This can cause date calculation \
-                 issues when sharing files between systems."
-                    .to_string(),
+                DateSystem1904Data,
                 Severity::Warning,
             ));
         }
@@ -85,7 +99,7 @@ mod tests {
         let violations = rule.check_date_system(&workbook);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::File1003);
-        assert!(violations[0].message.contains("1904 date system"));
+        assert!(violations[0].message().contains("1904 date system"));
     }
 
     #[test]

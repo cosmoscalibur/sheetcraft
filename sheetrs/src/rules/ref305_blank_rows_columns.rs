@@ -425,9 +425,9 @@ mod tests {
         // With threshold of 2, should catch 3 blank rows
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref305);
-        assert!(violations[0].message.contains("Blank rows"));
+        assert!(violations[0].message().contains("Blank rows"));
         // Should contain rows 2, 3, 4 (1-based)
-        assert!(violations[0].message.contains("2-4"));
+        assert!(violations[0].message().contains("2-4"));
     }
 
     #[test]
@@ -500,9 +500,9 @@ mod tests {
         // With threshold of 2, should catch 3 blank columns
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref305);
-        assert!(violations[0].message.contains("Blank columns"));
+        assert!(violations[0].message().contains("Blank columns"));
         // Should contain columns B, C, D
-        assert!(violations[0].message.contains("B-D"));
+        assert!(violations[0].message().contains("B-D"));
     }
 
     #[test]
@@ -940,7 +940,7 @@ mod tests {
         for violation in &violations {
             // Row 2 (1-based: 3) should NOT appear because it's in merged cell
             assert!(
-                !violation.message.contains("3"),
+                !violation.message().contains("3"),
                 "Row 3 (1-based) should not be reported as blank - it's in merged cell F2:F5"
             );
         }
@@ -1054,9 +1054,9 @@ mod tests {
 
         // With threshold of 2, should catch 3 blank rows
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("Blank rows"));
+        assert!(violations[0].message().contains("Blank rows"));
         // Should contain rows 2, 3, 4 (1-based)
-        assert!(violations[0].message.contains("2-4"));
+        assert!(violations[0].message().contains("2-4"));
     }
 
     #[test]

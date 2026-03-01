@@ -187,6 +187,6 @@ mod tests {
         let violations = rule.check(&workbook).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("dd-mm-yyyy"));
+        assert!(violations[0].message().contains("dd-mm-yyyy"));
     }
 }

@@ -7,7 +7,9 @@
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::{Cell, CellValue, Sheet};
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
 use regex::Regex;
 
 /// Rule that detects hardcoded numeric values in formulas.
@@ -116,6 +118,27 @@ impl HardcodedValuesInFormulasRule {
     }
 }
 
+/// Incident data for CALC201.
+#[derive(Debug)]
+pub struct HardcodedValuesData {
+    /// The hardcoded values found in the formula.
+    pub values: Vec<f64>,
+}
+
+impl ViolationData for HardcodedValuesData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let formatted: Vec<String> = self.values.iter().map(|v| v.to_string()).collect();
+        format!(
+            "Hardcoded values found in formula: {}",
+            formatted.join(", ")
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
 impl WalkerRule for HardcodedValuesInFormulasRule {
     fn id(&self) -> RuleId {
         RuleId::Calc201
@@ -147,8 +170,7 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
                 self.extract_hardcoded_values(formula, &ignored_values, ignore_ints, ignore_pow10);
 
             if !values.is_empty() {
-                let formatted: Vec<String> = values.iter().map(|v| v.to_string()).collect();
-                return vec![Violation::new(
+                return vec![Violation::with_data(
                     RuleId::Calc201,
                     ViolationScope::Cell(
                         sheet.sheet_index,
@@ -157,10 +179,7 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
                             col: cell.col,
                         },
                     ),
-                    format!(
-                        "Hardcoded values found in formula: {}",
-                        formatted.join(", ")
-                    ),
+                    HardcodedValuesData { values },
                     Severity::Warning,
                 )];
             }
@@ -250,7 +269,7 @@ mod tests {
 
         // One violation per cell with hardcoded values
         assert_eq!(violations.len(), 2);
-        let msgs: Vec<String> = violations.iter().map(|v| v.message.clone()).collect();
+        let msgs: Vec<String> = violations.iter().map(|v| v.message()).collect();
         assert!(msgs.iter().any(|m| m.contains("123")));
         assert!(msgs.iter().any(|m| m.contains("1.5")));
 
@@ -271,7 +290,7 @@ mod tests {
 
         // Should flag: 1.5 (cell B1), 0.1+0.01 aggregated (cell D1)
         let violations2 = run_calc201(&config2, &workbook);
-        let msgs2: Vec<String> = violations2.iter().map(|v| v.message.clone()).collect();
+        let msgs2: Vec<String> = violations2.iter().map(|v| v.message()).collect();
 
         // Integers are ignored, so 123, 0, 10, 100, 5 filtered out
         assert!(!msgs2.iter().any(|m| m.contains("123")));
@@ -290,7 +309,7 @@ mod tests {
 
         // 123 is integer, ignored on Sheet1
         let violations3 = run_calc201(&config3, &workbook);
-        let msgs3: Vec<String> = violations3.iter().map(|v| v.message.clone()).collect();
+        let msgs3: Vec<String> = violations3.iter().map(|v| v.message()).collect();
         assert!(!msgs3.iter().any(|m| m.contains("123")));
     }
 
@@ -327,7 +346,7 @@ mod tests {
 
         // Only one violation for the cell, not three
         assert_eq!(violations.len(), 1);
-        let msg = &violations[0].message;
+        let msg = &violations[0].message();
         assert!(msg.contains("1.5"));
         assert!(msg.contains("3.14"));
         assert!(msg.contains("42"));
@@ -401,7 +420,7 @@ mod tests {
 
         let violations = run_calc201(&config, &workbook);
 
-        let msgs: Vec<String> = violations.iter().map(|v| v.message.clone()).collect();
+        let msgs: Vec<String> = violations.iter().map(|v| v.message()).collect();
 
         // Indices 1 and 2 should NOT be flagged
         assert!(

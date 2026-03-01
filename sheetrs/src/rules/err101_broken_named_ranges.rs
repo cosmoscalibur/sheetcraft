@@ -4,12 +4,34 @@
 
 use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that identifies broken named ranges (references to invalid/deleted locations)
 ///
 /// Checks all defined names (named ranges) for reference strings containing "#REF!".
 pub struct BrokenNamedRangesRule;
+
+/// Incident data for ERR101.
+#[derive(Debug)]
+pub struct BrokenNamedRangeData {
+    /// The named range name.
+    pub name: String,
+    /// The broken reference string.
+    pub reference: String,
+}
+
+impl ViolationData for BrokenNamedRangeData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Named range '{}' has broken reference: {}",
+            self.name, self.reference
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl WalkerRule for BrokenNamedRangesRule {
     fn id(&self) -> RuleId {
@@ -21,10 +43,13 @@ impl WalkerRule for BrokenNamedRangesRule {
 
         for (name, reference) in &workbook.defined_names {
             if is_broken_reference(reference) {
-                violations.push(Violation::new(
+                violations.push(Violation::with_data(
                     RuleId::Err101,
                     ViolationScope::Book,
-                    format!("Named range '{}' has broken reference: {}", name, reference),
+                    BrokenNamedRangeData {
+                        name: name.clone(),
+                        reference: reference.clone(),
+                    },
                     Severity::Error,
                 ));
             }
@@ -76,6 +101,6 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Err101);
-        assert!(violations[0].message.contains("BrokenRange"));
+        assert!(violations[0].message().contains("BrokenRange"));
     }
 }

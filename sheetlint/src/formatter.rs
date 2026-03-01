@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use colored::*;
-use sheetrs::{Severity, Violation, ViolationScope, reader::Workbook};
+use sheetrs::{FormatContext, Severity, Violation, ViolationScope, reader::Workbook};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -15,6 +15,8 @@ pub fn print_human(file_path: &Path, violations: &[Violation], workbook: &Workbo
         println!("{}", "✓ No violations found!".green().bold());
         return;
     }
+
+    let ctx = FormatContext { workbook };
 
     // Group violations by scope for hierarchical display
     let mut book_violations = Vec::new();
@@ -54,7 +56,7 @@ pub fn print_human(file_path: &Path, violations: &[Violation], workbook: &Workbo
     if !book_violations.is_empty() {
         println!("{}", "Book-level violations:".bold().underline());
         for violation in book_violations {
-            print_violation(violation, 1);
+            print_violation(violation, 1, &ctx);
         }
         println!();
     }
@@ -65,14 +67,14 @@ pub fn print_human(file_path: &Path, violations: &[Violation], workbook: &Workbo
 
         // Print sheet-level violations first
         for violation in sheet_violations {
-            print_violation(violation, 1);
+            print_violation(violation, 1, &ctx);
         }
 
         // Print cell-level violations
         for (cell_ref, violations) in cell_violations {
             println!("  {} {}", "Cell:".bold(), cell_ref.yellow());
             for violation in violations {
-                print_violation(violation, 2);
+                print_violation(violation, 2, &ctx);
             }
         }
         println!();
@@ -104,7 +106,7 @@ pub fn print_human(file_path: &Path, violations: &[Violation], workbook: &Workbo
     }
 }
 
-fn print_violation(violation: &Violation, indent: usize) {
+fn print_violation(violation: &Violation, indent: usize, ctx: &FormatContext<'_>) {
     let indent_str = "  ".repeat(indent);
     let severity_str = match violation.severity {
         Severity::Error => "ERROR".red().bold(),
@@ -117,15 +119,31 @@ fn print_violation(violation: &Violation, indent: usize) {
         indent_str,
         severity_str,
         violation.rule_id.as_str().bright_black(),
-        violation.message
+        violation.format_message(ctx)
     );
 }
 
 /// Print violations in JSON format
-pub fn print_json(file_path: &Path, violations: &[Violation]) -> Result<()> {
+pub fn print_json(file_path: &Path, violations: &[Violation], workbook: &Workbook) -> Result<()> {
+    let ctx = FormatContext { workbook };
+
+    // Pre-render messages for JSON output so data-backed violations
+    // produce the same human-readable strings as the legacy path.
+    let rendered: Vec<serde_json::Value> = violations
+        .iter()
+        .map(|v| {
+            serde_json::json!({
+                "rule_id": v.rule_id,
+                "scope": v.scope,
+                "message": v.format_message(&ctx),
+                "severity": v.severity,
+            })
+        })
+        .collect();
+
     let output = serde_json::json!({
         "file": file_path.display().to_string(),
-        "violations": violations,
+        "violations": rendered,
         "summary": {
             "total": violations.len(),
             "errors": violations.iter().filter(|v| v.severity == Severity::Error).count(),

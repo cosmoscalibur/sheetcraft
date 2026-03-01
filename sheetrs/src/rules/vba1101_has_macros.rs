@@ -2,12 +2,26 @@
 
 use super::{LinterContext, WalkerRule};
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that detects the presence of macros (VBA/Scripts)
 ///
 /// Macros can pose security risks or indicate legacy automation that may need review.
 pub struct HasMacrosRule;
+
+/// Incident data for VBA1101 — no variable fields.
+#[derive(Debug)]
+pub struct HasMacrosData;
+
+impl ViolationData for HasMacrosData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        "Workbook contains macros or scripts. Review for security concerns.".to_string()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl WalkerRule for HasMacrosRule {
     fn id(&self) -> RuleId {
@@ -18,10 +32,10 @@ impl WalkerRule for HasMacrosRule {
         let mut violations = Vec::new();
 
         if workbook.has_macros {
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::Vba1101,
                 ViolationScope::Book,
-                "Workbook contains macros or scripts. Review for security concerns.".to_string(),
+                HasMacrosData,
                 Severity::Warning,
             ));
         }
@@ -50,7 +64,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vba1101);
-        assert!(violations[0].message.contains("macros"));
+        assert!(violations[0].message().contains("macros"));
     }
 
     #[test]

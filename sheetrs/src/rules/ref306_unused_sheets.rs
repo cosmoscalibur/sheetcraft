@@ -4,12 +4,33 @@
 
 use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
 /// Rule that detects unused (standalone) sheets
 pub struct UnusedSheetsRule;
+
+/// Incident data for REF306 (walker path).
+#[derive(Debug)]
+pub struct UnusedSheetData {
+    /// 0-based sheet index of the unused sheet.
+    pub sheet_index: u16,
+}
+
+impl ViolationData for UnusedSheetData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let name = ctx
+            .workbook
+            .sheet_name_by_index(self.sheet_index)
+            .unwrap_or("Unknown");
+        format!("Sheet '{}' is not referenced by any other sheet", name)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl LinterRule for UnusedSheetsRule {
     fn id(&self) -> RuleId {
@@ -142,13 +163,12 @@ impl WalkerRule for UnusedSheetsRule {
             // Walker version focuses on reference detection only
             // Hidden/formula logic is in the legacy check() for full compatibility
             if !is_only_sheet && !is_referenced {
-                violations.push(Violation::new(
+                violations.push(Violation::with_data(
                     RuleId::Ref306,
                     ViolationScope::Sheet(sheet.sheet_index),
-                    format!(
-                        "Sheet '{}' is not referenced by any other sheet",
-                        sheet.name
-                    ),
+                    UnusedSheetData {
+                        sheet_index: sheet.sheet_index,
+                    },
                     Severity::Warning,
                 ));
             }
@@ -257,6 +277,6 @@ mod tests {
         // Sheet3 should be reported as unused
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref306);
-        assert!(violations[0].message.contains("Sheet3"));
+        assert!(violations[0].message().contains("Sheet3"));
     }
 }

@@ -289,8 +289,8 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ext803);
-        assert!(violations[0].message.contains("https://example.com"));
-        assert!(violations[0].message.contains("range"));
+        assert!(violations[0].message().contains("https://example.com"));
+        assert!(violations[0].message().contains("range"));
     }
 
     #[test]

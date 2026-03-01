@@ -1,9 +1,12 @@
 //! Violation reporting system with hierarchical structure
 
+use crate::reader::Workbook;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Unique identifier for each linter rule.
 ///
@@ -437,21 +440,59 @@ impl std::fmt::Display for CellReference {
     }
 }
 
+/// Context provided to [`ViolationData`] for human-readable message formatting.
+///
+/// The writer/formatter constructs this context once and passes it when
+/// rendering violation messages, enabling index-to-name resolution.
+pub struct FormatContext<'a> {
+    /// Reference to the workbook for resolving sheet indexes to names.
+    pub workbook: &'a Workbook,
+}
+
+/// Trait for compact violation incident data.
+///
+/// Each walker rule defines its own struct implementing this trait. The data
+/// struct stores only observed facts (integer indexes, tuples) — not
+/// thresholds, configuration, or pre-formatted strings. The human-readable
+/// message is produced at output time via [`format_message`](ViolationData::format_message).
+pub trait ViolationData: fmt::Debug + Send + Sync {
+    /// Produce the human-readable message, resolving indexes via context.
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String;
+
+    /// Downcast support for testing and programmatic access.
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+/// Internal storage for violation messages.
+///
+/// Supports two paths: legacy pre-formatted strings (used by [`LinterRule`]
+/// implementations) and deferred data (used by [`WalkerRule`] implementations).
+#[derive(Debug, Clone)]
+enum ViolationMessageInner {
+    /// Pre-formatted message string (legacy `LinterRule` path).
+    Legacy(String),
+    /// Compact incident data with deferred formatting (walker path).
+    Data(Arc<dyn ViolationData>),
+}
+
 /// A linter violation
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Violation {
     /// Unique rule identifier
     pub rule_id: RuleId,
     /// Scope of the violation
     pub scope: ViolationScope,
-    /// Human-readable message
-    pub message: String,
     /// Severity level
     pub severity: Severity,
+    /// Violation content (legacy string or deferred data).
+    message_inner: ViolationMessageInner,
 }
 
 impl Violation {
-    /// Creates a new violation.
+    /// Creates a new violation with a pre-formatted message string.
+    ///
+    /// Used by legacy [`LinterRule`] implementations. Walker rules should
+    /// prefer [`with_data`](Violation::with_data).
     pub fn new(
         rule_id: RuleId,
         scope: ViolationScope,
@@ -461,11 +502,89 @@ impl Violation {
         Self {
             rule_id,
             scope,
-            message: message.into(),
             severity,
+            message_inner: ViolationMessageInner::Legacy(message.into()),
+        }
+    }
+
+    /// Creates a new violation with compact incident data.
+    ///
+    /// The human-readable message is deferred to output time via
+    /// [`format_message`](Violation::format_message).
+    pub fn with_data(
+        rule_id: RuleId,
+        scope: ViolationScope,
+        data: impl ViolationData + 'static,
+        severity: Severity,
+    ) -> Self {
+        Self {
+            rule_id,
+            scope,
+            severity,
+            message_inner: ViolationMessageInner::Data(Arc::new(data)),
+        }
+    }
+
+    /// Produce the human-readable message.
+    ///
+    /// For legacy violations, returns the stored string. For data-backed
+    /// violations, calls [`ViolationData::format_message`] with the context.
+    pub fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        match &self.message_inner {
+            ViolationMessageInner::Legacy(msg) => msg.clone(),
+            ViolationMessageInner::Data(data) => data.format_message(ctx),
+        }
+    }
+
+    /// Returns the legacy message string, if present.
+    ///
+    /// Returns `None` for data-backed violations (use
+    /// [`format_message`](Violation::format_message) instead).
+    pub fn legacy_message(&self) -> Option<&str> {
+        match &self.message_inner {
+            ViolationMessageInner::Legacy(msg) => Some(msg),
+            ViolationMessageInner::Data(_) => None,
+        }
+    }
+
+    /// Attempt to downcast the incident data to a concrete type.
+    ///
+    /// Returns `None` if the violation uses a legacy message or if the
+    /// concrete type does not match.
+    pub fn data<T: ViolationData + 'static>(&self) -> Option<&T> {
+        match &self.message_inner {
+            ViolationMessageInner::Data(data) => data.as_any().downcast_ref::<T>(),
+            ViolationMessageInner::Legacy(_) => None,
+        }
+    }
+
+    /// Convenience accessor: renders the human-readable message.
+    ///
+    /// For legacy violations, returns the stored string.
+    /// For data-backed violations, renders using a default [`Workbook`] context.
+    /// Prefer [`format_message`](Violation::format_message) when a real workbook
+    /// is available (e.g., in the formatter) for accurate name resolution.
+    pub fn message(&self) -> String {
+        match &self.message_inner {
+            ViolationMessageInner::Legacy(msg) => msg.clone(),
+            ViolationMessageInner::Data(data) => {
+                let wb = Workbook::default();
+                let ctx = FormatContext { workbook: &wb };
+                data.format_message(&ctx)
+            }
         }
     }
 }
+
+impl PartialEq for Violation {
+    fn eq(&self, other: &Self) -> bool {
+        self.rule_id == other.rule_id
+            && self.scope == other.scope
+            && self.severity == other.severity
+    }
+}
+
+impl Eq for Violation {}
 
 impl PartialOrd for Violation {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -478,5 +597,26 @@ impl Ord for Violation {
         self.scope
             .cmp(&other.scope)
             .then_with(|| self.rule_id.cmp(&other.rule_id))
+    }
+}
+
+impl Serialize for Violation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Violation", 4)?;
+        state.serialize_field("rule_id", &self.rule_id)?;
+        state.serialize_field("scope", &self.scope)?;
+        // For legacy messages, serialize the stored string.
+        // For data-backed violations, serialize a placeholder (the
+        // formatter should pre-render via format_message before JSON output).
+        let message = match &self.message_inner {
+            ViolationMessageInner::Legacy(msg) => msg.clone(),
+            ViolationMessageInner::Data(data) => format!("{:?}", data),
+        };
+        state.serialize_field("message", &message)?;
+        state.serialize_field("severity", &self.severity)?;
+        state.end()
     }
 }

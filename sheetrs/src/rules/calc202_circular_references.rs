@@ -4,7 +4,9 @@
 
 use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::{Cell, Sheet, Workbook};
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
 use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -46,6 +48,36 @@ impl CircularReferenceRule {
 impl Default for CircularReferenceRule {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Incident data for CALC202 (walker path).
+#[derive(Debug)]
+pub struct CircularReferenceData {
+    /// Cycle path as (sheet_index, row, col) tuples.
+    pub cycle: Vec<(u16, u32, u32)>,
+}
+
+impl ViolationData for CircularReferenceData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let path_str: Vec<String> = self
+            .cycle
+            .iter()
+            .map(|(idx, r, c)| {
+                let sheet_name = ctx.workbook.sheet_name_by_index(*idx).unwrap_or("Unknown");
+                format!("{}!{}", sheet_name, CellReference::new(*r, *c))
+            })
+            .collect();
+        let first = path_str.first().map_or("", |s| s.as_str());
+        format!(
+            "Circular reference detected: {} -> {}",
+            path_str.join(" -> "),
+            first
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -164,15 +196,8 @@ impl WalkerRule for CircularReferenceRule {
         Vec::new()
     }
 
-    fn on_workbook_end(&self, workbook: &Workbook, ctx: &mut LinterContext) -> Vec<Violation> {
+    fn on_workbook_end(&self, _workbook: &Workbook, ctx: &mut LinterContext) -> Vec<Violation> {
         let cycles = find_cycles(&ctx.cell_dependencies);
-
-        // Build index-to-name map for violation messages
-        let index_to_name: HashMap<u16, &str> = workbook
-            .sheets
-            .iter()
-            .map(|s| (s.sheet_index, s.name.as_str()))
-            .collect();
 
         let mut violations = Vec::new();
         let mut reported_cells = HashSet::new();
@@ -185,23 +210,16 @@ impl WalkerRule for CircularReferenceRule {
                     reported_cells.insert(*cell);
                 }
 
-                let path_str: Vec<String> = cycle
-                    .iter()
-                    .map(|(idx, r, c)| {
-                        let sheet_name = index_to_name.get(idx).copied().unwrap_or("Unknown");
-                        format!("{}!{}", sheet_name, CellReference::new(*r, *c))
-                    })
-                    .collect();
-
-                let full_path = format!("{} -> {}", path_str.join(" -> "), path_str[0]);
-
+                // Report on the first cell
                 let (sheet_index, r, c) = &cycle[0];
                 let cell_ref = CellReference::new(*r, *c);
 
-                violations.push(Violation::new(
+                violations.push(Violation::with_data(
                     RuleId::Calc202,
                     ViolationScope::Cell(*sheet_index, cell_ref),
-                    format!("Circular reference detected: {}", full_path),
+                    CircularReferenceData {
+                        cycle: cycle.clone(),
+                    },
                     Severity::Error,
                 ));
             }

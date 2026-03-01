@@ -185,6 +185,6 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Cpx509);
-        assert!(violations[0].message.contains("range"));
+        assert!(violations[0].message().contains("range"));
     }
 }

@@ -216,7 +216,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Cpx505);
-        assert!(violations[0].message.contains(">5 levels"));
+        assert!(violations[0].message().contains(">5 levels"));
     }
 
     #[test]

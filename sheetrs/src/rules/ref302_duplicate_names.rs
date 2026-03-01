@@ -102,8 +102,8 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref302);
-        assert!(violations[0].message.contains("Data"));
-        assert!(violations[0].message.contains("data"));
+        assert!(violations[0].message().contains("Data"));
+        assert!(violations[0].message().contains("data"));
     }
 
     #[test]
@@ -156,17 +156,19 @@ mod tests {
         assert_eq!(violations.len(), 2);
 
         // Check first violation contains all Sheet1 variants
-        let sheet1_violation = violations.iter().find(|v| v.message.contains("Sheet1"));
+        let sheet1_violation = violations.iter().find(|v| v.message().contains("Sheet1"));
         assert!(sheet1_violation.is_some());
-        let msg = &sheet1_violation.unwrap().message;
+        let msg = &sheet1_violation.unwrap().message();
         assert!(msg.contains("Sheet1"));
         assert!(msg.contains("sheet 1"));
         assert!(msg.contains("Sheet-1"));
 
         // Check second violation contains Data_2024 variants
-        let data_violation = violations.iter().find(|v| v.message.contains("Data_2024"));
+        let data_violation = violations
+            .iter()
+            .find(|v| v.message().contains("Data_2024"));
         assert!(data_violation.is_some());
-        let msg = &data_violation.unwrap().message;
+        let msg = &data_violation.unwrap().message();
         assert!(msg.contains("Data_2024"));
         assert!(msg.contains("data2024"));
     }

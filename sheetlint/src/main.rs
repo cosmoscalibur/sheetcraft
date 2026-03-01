@@ -86,7 +86,7 @@ fn main() -> Result<()> {
             formatter::print_human(&cli.file, &violations, &workbook);
         }
         OutputFormat::Json => {
-            formatter::print_json(&cli.file, &violations)?;
+            formatter::print_json(&cli.file, &violations, &workbook)?;
         }
     }
 

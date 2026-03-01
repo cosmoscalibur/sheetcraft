@@ -14,7 +14,7 @@ use std::path::Path;
 
 pub use config::LinterConfig;
 pub use rules::LinterRule;
-pub use violation::{RuleId, Severity, Violation, ViolationScope};
+pub use violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 use rules::WalkerRule;
 use rules::walker::WorkbookWalker;

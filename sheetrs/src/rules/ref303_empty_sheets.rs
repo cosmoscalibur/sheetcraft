@@ -4,12 +4,33 @@
 
 use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
 use crate::reader::{Sheet, Workbook};
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 use anyhow::Result;
 use std::collections::HashSet;
 
 /// Rule that detects completely empty sheets
 pub struct EmptySheetsRule;
+
+/// Incident data for REF303 (walker path).
+#[derive(Debug)]
+pub struct EmptySheetData {
+    /// 0-based sheet index of the empty sheet.
+    pub sheet_index: u16,
+}
+
+impl ViolationData for EmptySheetData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let name = ctx
+            .workbook
+            .sheet_name_by_index(self.sheet_index)
+            .unwrap_or("Unknown");
+        format!("Sheet '{}' is completely empty", name)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl LinterRule for EmptySheetsRule {
     fn id(&self) -> RuleId {
@@ -133,10 +154,12 @@ impl WalkerRule for EmptySheetsRule {
         // Note: Full referenced_sheets logic is handled by the LinterRule check()
         // Walker version uses cells.is_empty() as a quick first-pass detection
         if sheet.cells.is_empty() {
-            vec![Violation::new(
+            vec![Violation::with_data(
                 RuleId::Ref303,
                 ViolationScope::Sheet(sheet.sheet_index),
-                format!("Sheet '{}' is completely empty", sheet.name),
+                EmptySheetData {
+                    sheet_index: sheet.sheet_index,
+                },
                 Severity::Warning,
             )]
         } else {
@@ -212,8 +235,8 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref303);
-        assert!(violations[0].message.contains("Empty"));
-        assert!(!violations[0].message.contains("UnusedData"));
+        assert!(violations[0].message().contains("Empty"));
+        assert!(!violations[0].message().contains("UnusedData"));
     }
     #[test]
     fn test_empty_unused_sheets_hidden_with_print_area() {
@@ -269,6 +292,6 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref303);
-        assert!(violations[0].message.contains("HiddenEmpty"));
+        assert!(violations[0].message().contains("HiddenEmpty"));
     }
 }

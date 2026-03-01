@@ -6,7 +6,7 @@
 use super::{LinterContext, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 use chrono::Utc;
 
 /// Default maximum age threshold in days
@@ -21,6 +21,23 @@ const DEFAULT_MAX_AGE_DAYS: i64 = 365;
 pub struct OldSpreadsheetRule {
     /// Maximum age in days
     max_age_days: i64,
+}
+
+/// Incident data for FILE1002.
+#[derive(Debug)]
+pub struct OldSpreadsheetData {
+    /// Observed age in days.
+    pub age_days: i64,
+}
+
+impl ViolationData for OldSpreadsheetData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!("File is {} days old", self.age_days)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl OldSpreadsheetRule {
@@ -45,15 +62,10 @@ impl OldSpreadsheetRule {
             let age_days = age.num_days();
 
             if age_days > self.max_age_days {
-                violations.push(Violation::new(
+                violations.push(Violation::with_data(
                     RuleId::File1002,
                     ViolationScope::Book,
-                    format!(
-                        "File is {age_days} days old (last modified: {}), \
-                         exceeds threshold of {} days",
-                        modified.format("%Y-%m-%d"),
-                        self.max_age_days
-                    ),
+                    OldSpreadsheetData { age_days },
                     Severity::Info,
                 ));
             }
@@ -107,7 +119,7 @@ mod tests {
         let violations = rule.check_age(&workbook);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::File1002);
-        assert!(violations[0].message.contains("days old"));
+        assert!(violations[0].message().contains("days old"));
     }
 
     #[test]

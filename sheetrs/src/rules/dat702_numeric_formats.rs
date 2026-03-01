@@ -223,7 +223,7 @@ mod tests {
         // Should detect numeric text as a range
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Data702);
-        assert!(violations[0].message.contains("range"));
+        assert!(violations[0].message().contains("range"));
         // The range should be "2 cells in A1:B2" since cells are at (0,0) and (1,0)
     }
 }

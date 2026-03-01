@@ -205,7 +205,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vul601);
-        assert!(violations[0].message.contains("duplicated 3 times"));
+        assert!(violations[0].message().contains("duplicated 3 times"));
     }
 
     #[test]

@@ -203,7 +203,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vul602);
-        assert!(violations[0].message.contains("NOW"));
+        assert!(violations[0].message().contains("NOW"));
     }
 
     #[test]

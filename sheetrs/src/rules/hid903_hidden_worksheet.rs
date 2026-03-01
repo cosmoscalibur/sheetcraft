@@ -2,12 +2,33 @@
 
 use super::{LinterContext, WalkerRule};
 use crate::reader::Sheet;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that detects hidden worksheets
 ///
 /// Hidden sheets can sometimes contain sensitive data or deprecated logic that should be removed.
 pub struct HiddenWorksheetRule;
+
+/// Incident data for HID903.
+#[derive(Debug)]
+pub struct HiddenWorksheetData {
+    /// 0-based sheet index of the hidden sheet.
+    pub sheet_index: u16,
+}
+
+impl ViolationData for HiddenWorksheetData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let name = ctx
+            .workbook
+            .sheet_name_by_index(self.sheet_index)
+            .unwrap_or("Unknown");
+        format!("Hidden sheet: {}", name)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 impl WalkerRule for HiddenWorksheetRule {
     fn id(&self) -> RuleId {
@@ -18,10 +39,12 @@ impl WalkerRule for HiddenWorksheetRule {
         let mut violations = Vec::new();
 
         if !sheet.visible {
-            violations.push(Violation::new(
+            violations.push(Violation::with_data(
                 RuleId::Hid903,
                 ViolationScope::Sheet(sheet.sheet_index),
-                format!("Hidden sheet: {}", sheet.name),
+                HiddenWorksheetData {
+                    sheet_index: sheet.sheet_index,
+                },
                 Severity::Warning,
             ));
         }
@@ -51,7 +74,7 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Hid903);
         assert_eq!(violations[0].scope, ViolationScope::Sheet(1));
-        assert!(violations[0].message.contains("HiddenSheet1"));
+        assert!(violations[0].message().contains("Hidden sheet"));
     }
 
     #[test]

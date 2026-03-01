@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sheetrs::reader::read_workbook_from_reader;
 use sheetrs::rules::registry;
-use sheetrs::{Linter, LinterConfig, violation::Violation};
+use sheetrs::{FormatContext, Linter, LinterConfig, violation::Violation};
 use sheetrs::{Severity, ViolationScope};
 use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
@@ -118,11 +118,13 @@ fn format_violations_human(
         }
     }
 
+    let ctx = FormatContext { workbook };
+
     // Print book-level violations
     if !book_violations.is_empty() {
         output.push_str("📚 Book-level violations:\n");
         for violation in book_violations {
-            output.push_str(&format_violation(violation, rule_names, 1));
+            output.push_str(&format_violation(violation, rule_names, 1, &ctx));
         }
         output.push('\n');
     }
@@ -131,7 +133,7 @@ fn format_violations_human(
     for (sheet_name, violations) in &sheet_violations {
         output.push_str(&format!("📄 Sheet: {}\n", sheet_name));
         for violation in violations {
-            output.push_str(&format_violation(violation, rule_names, 1));
+            output.push_str(&format_violation(violation, rule_names, 1, &ctx));
         }
         output.push('\n');
     }
@@ -142,7 +144,7 @@ fn format_violations_human(
         for (cell_ref, violations) in cells {
             output.push_str(&format!("  📍 Cell: {}\n", cell_ref));
             for violation in violations {
-                output.push_str(&format_violation(violation, rule_names, 2));
+                output.push_str(&format_violation(violation, rule_names, 2, &ctx));
             }
         }
         output.push('\n');
@@ -181,6 +183,7 @@ fn format_violation(
     violation: &Violation,
     rule_names: &HashMap<String, String>,
     indent: usize,
+    ctx: &FormatContext<'_>,
 ) -> String {
     let indent_str = "  ".repeat(indent);
     let severity_icon = match violation.severity {
@@ -197,7 +200,11 @@ fn format_violation(
 
     format!(
         "{}{} [{}] {} - {}\n",
-        indent_str, severity_icon, rule_id_str, rule_name, violation.message
+        indent_str,
+        severity_icon,
+        rule_id_str,
+        rule_name,
+        violation.format_message(ctx)
     )
 }
 

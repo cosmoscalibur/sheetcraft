@@ -224,7 +224,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref307);
-        assert!(violations[0].message.contains("Whole-column"));
+        assert!(violations[0].message().contains("Whole-column"));
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref307);
-        assert!(violations[0].message.contains("Whole-row"));
+        assert!(violations[0].message().contains("Whole-row"));
     }
 
     #[test]

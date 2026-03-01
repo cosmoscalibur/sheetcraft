@@ -235,7 +235,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ext802);
-        assert!(violations[0].message.contains("Book1.xlsx"));
-        assert!(violations[0].message.contains("range"));
+        assert!(violations[0].message().contains("Book1.xlsx"));
+        assert!(violations[0].message().contains("range"));
     }
 }

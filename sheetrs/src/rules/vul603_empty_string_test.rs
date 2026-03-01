@@ -204,7 +204,7 @@ mod tests {
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vul603);
-        assert!(violations[0].message.contains("ISBLANK"));
+        assert!(violations[0].message().contains("ISBLANK"));
     }
 
     #[test]
