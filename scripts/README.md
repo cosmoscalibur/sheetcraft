@@ -25,7 +25,7 @@ The main benchmark script. Uses `/usr/bin/time -v` for comprehensive metrics:
 
 Benchmarks use production files in `tests/production/`.
 
-### Current (v0.3.1 - Walker Integration)
+### Walker Integration (56e85b5)
 
 | Metric | XLSX | ODS |
 |--------|------|-----|
@@ -35,7 +35,15 @@ Benchmarks use production files in `tests/production/`.
 | Peak RAM | 1744 MB | - |
 | Binary size | 8.3M | - |
 
-### Previous (v0.3.1)
+### Memory dependencies (6db5c17)
+
+- Total time: 56.5s
+- User time: 55s
+- CPU usage: 99%
+- Peak RAM: 1927MB
+- Binary size: 8.6 MB
+
+### Previous
 
 - Total time: 60.24s
 - User time: 58.25s

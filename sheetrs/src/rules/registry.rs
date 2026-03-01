@@ -119,8 +119,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(err102_error_cells::ErrorCellsRule),
         Box::new(err103_ref_to_error::RefToErrorRule),
         // Unreliable Calculations (2xx)
-        Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config)),
-        // calc202 moved to walker
+        // calc201, calc202 moved to walker
         Box::new(calc203_double_operator::DoubleOperatorRule),
         Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         Box::new(calc205_double_count::DoubleCountRule),
@@ -200,6 +199,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>> {
     vec![
         // Unreliable Calculations (2xx)
+        Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config)),
         Box::new(calc202_circular_references::CircularReferenceRule::new()),
         // Reference Issues (3xx)
         Box::new(ref303_empty_sheets::EmptySheetsRule),
@@ -235,6 +235,9 @@ pub fn create_enabled_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerR
 /// Clone a walker rule for execution (rules need fresh state per lint)
 pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dyn WalkerRule> {
     match rule.id() {
+        RuleId::Calc201 => {
+            Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
+        }
         RuleId::Calc202 => Box::new(calc202_circular_references::CircularReferenceRule::new()),
         RuleId::Ref303 => Box::new(ref303_empty_sheets::EmptySheetsRule),
         RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
