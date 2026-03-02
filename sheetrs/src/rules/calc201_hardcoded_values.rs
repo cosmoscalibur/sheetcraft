@@ -127,11 +127,14 @@ pub struct HardcodedValuesData {
 
 impl ViolationData for HardcodedValuesData {
     fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
-        let formatted: Vec<String> = self.values.iter().map(|v| v.to_string()).collect();
-        format!(
-            "Hardcoded values found in formula: {}",
-            formatted.join(", ")
-        )
+        let mut seen = Vec::new();
+        for v in &self.values {
+            let s = v.to_string();
+            if !seen.contains(&s) {
+                seen.push(s);
+            }
+        }
+        format!("Hardcoded values found in formula: {}", seen.join(", "))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
