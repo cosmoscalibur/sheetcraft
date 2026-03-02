@@ -23,9 +23,25 @@ sheetcli <FILE> --remove-ranges "MyRange" "OldData" --output <OUT_FILE>
 
 # Combined operations
 sheetcli <FILE> --remove-sheets "Temp" --remove-ranges "TempRange" -o cleaned.xlsx
+
+### 2. Inspection
+
+Non-destructive operations to inspect file internals.
+
+```bash
+# List all named ranges and check for errors (#REF!)
+sheetcli <FILE> --list-ranges
+```
+
+### 3. Dry Run
+
+Preview what operations would be performed without writing to disk.
+
+```bash
+sheetcli <FILE> --remove-sheets "Old" --dry-run
 ```
 
 ## Supported Formats
 
-- **Input**: XLSX (Full support), ODS (Partial support for conversion).
+- **Input**: XLSX (Full support), ODS (Read-only for inspection/linting purposes in this tool).
 - **Output (Modification)**: XLSX.

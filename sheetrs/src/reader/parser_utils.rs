@@ -5,6 +5,14 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 
 /// Parse a cell reference like "A1" into (row, col) as 0-based indices
+///
+/// # Arguments
+///
+/// * `cell_ref` - The cell reference string (e.g., "A1", "Z99")
+///
+/// # Returns
+///
+/// * `Option<(u32, u32)>` - The (row, col) indices if parsing is successful.
 pub fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
     let mut col = 0u32;
     let mut row_str = String::new();
@@ -28,6 +36,14 @@ pub fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
 }
 
 /// Parse a cell range like "A1:B2" into (start_row, start_col, end_row, end_col)
+///
+/// # Arguments
+///
+/// * `range` - The range string (e.g., "A1:B2")
+///
+/// # Returns
+///
+/// * `Option<(u32, u32, u32, u32)>` - The range coordinates if parsing is successful.
 pub fn parse_cell_range(range: &str) -> Option<(u32, u32, u32, u32)> {
     let parts: Vec<&str> = range.split(':').collect();
     if parts.len() != 2 {
@@ -46,7 +62,7 @@ pub fn read_text_node<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<Str
     let mut text = String::new();
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Text(e) => text.push_str(&e.unescape()?.to_string()),
+            Event::Text(e) => text.push_str(e.unescape()?.as_ref()),
             Event::CData(e) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
             Event::End(_) => break,
             Event::Eof => break,
@@ -55,6 +71,20 @@ pub fn read_text_node<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<Str
         buf.clear();
     }
     Ok(text)
+}
+
+/// Extract basename from a file path
+/// Handles both absolute and relative paths, and strips file:// prefix
+pub fn extract_basename(path: &str) -> String {
+    // Strip file:// prefix if present
+    let clean_path = path.trim_start_matches("file://");
+
+    // Extract basename using Path
+    std::path::Path::new(clean_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(clean_path)
+        .to_string()
 }
 
 #[cfg(test)]

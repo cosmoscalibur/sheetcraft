@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "sheetcli")]
-#[command(about = "CLI tools for SheetChecks", long_about = None)]
+#[command(about = "CLI tools for SheetRS", long_about = None)]
 #[command(version)]
 struct Cli {
     /// Path to the Excel/ODS file

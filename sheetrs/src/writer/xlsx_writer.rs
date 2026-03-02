@@ -4,9 +4,7 @@ use anyhow::Result;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::{BufReader, Cursor, Read, Write};
-use std::path::Path;
+use std::io::{Cursor, Read, Seek, Write};
 use zip::{ZipArchive, ZipWriter, write::FileOptions};
 
 /// Struct used to define modifications to be applied to a workbook
@@ -17,18 +15,15 @@ pub struct WorkbookModifications {
 }
 
 /// Modify an XLSX file by applying specified modifications
-pub fn modify_workbook_xlsx(
-    input_path: &Path,
-    output_path: &Path,
+pub fn modify_workbook_xlsx<R: Read + Seek, W: Write + Seek>(
+    mut input: R,
+    output: W,
     modifications: &WorkbookModifications,
 ) -> Result<()> {
-    let file = File::open(input_path)?;
-    let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader)?;
+    let mut archive = ZipArchive::new(&mut input)?;
 
     // Create output ZIP
-    let output_file = File::create(output_path)?;
-    let mut zip_writer = ZipWriter::new(output_file);
+    let mut zip_writer = ZipWriter::new(output);
 
     // Read workbook.xml needed for IDs and cleanup
     let workbook_xml = read_file_from_zip(&mut archive, "xl/workbook.xml")?;
@@ -65,17 +60,17 @@ pub fn modify_workbook_xlsx(
             let mut content = workbook_xml.clone(); // Use cached content
 
             // 1. Remove sheets
-            if let Some(sheets) = &modifications.remove_sheets {
-                if !sheets.is_empty() {
-                    content = remove_sheets_from_workbook_xml(&content, sheets)?;
-                }
+            if let Some(sheets) = &modifications.remove_sheets
+                && !sheets.is_empty()
+            {
+                content = remove_sheets_from_workbook_xml(&content, sheets)?;
             }
 
             // 2. Remove named ranges
-            if let Some(ranges) = &modifications.remove_named_ranges {
-                if !ranges.is_empty() {
-                    content = remove_named_ranges_from_workbook_xml(&content, ranges)?;
-                }
+            if let Some(ranges) = &modifications.remove_named_ranges
+                && !ranges.is_empty()
+            {
+                content = remove_named_ranges_from_workbook_xml(&content, ranges)?;
             }
 
             zip_writer.start_file(&name, FileOptions::<()>::default())?;
@@ -107,7 +102,10 @@ pub fn modify_workbook_xlsx(
 
 // Helper functions
 
-fn read_file_from_zip(archive: &mut ZipArchive<BufReader<File>>, filename: &str) -> Result<String> {
+fn read_file_from_zip<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    filename: &str,
+) -> Result<String> {
     let mut file = archive.by_name(filename)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;

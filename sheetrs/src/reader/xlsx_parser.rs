@@ -5,6 +5,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::io::BufReader;
+use std::sync::Arc;
 use zip::ZipArchive;
 
 use super::{Cell, CellValue, Sheet, WorkbookReader};
@@ -138,10 +139,10 @@ pub fn extract_defined_names_from_xlsx(
                     b"definedName" if in_defined_names => {
                         // Get the name attribute
                         for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                if attr.key.as_ref() == b"name" {
-                                    current_name = attr.unescape_value()?.to_string();
-                                }
+                            if let Ok(attr) = attr
+                                && attr.key.as_ref() == b"name"
+                            {
+                                current_name = attr.unescape_value()?.to_string();
                             }
                         }
                     }
@@ -215,10 +216,8 @@ pub fn extract_tables_from_xlsx(
                                 b"name" | b"displayName" => {
                                     // displayName is usually the safe name, name might be id.
                                     // Spec says: name is collection name, displayName is unique name for formulas.
-                                    // DisplayName is prioritized.
-                                    if name.is_empty() {
-                                        name = attr.unescape_value()?.to_string();
-                                    } else if attr.key.as_ref() == b"displayName" {
+                                    // DisplayName is prioritized, but if name is empty, use either.
+                                    if name.is_empty() || attr.key.as_ref() == b"displayName" {
                                         name = attr.unescape_value()?.to_string();
                                     }
                                 }
@@ -261,10 +260,13 @@ pub fn extract_tables_from_xlsx(
     Ok(current_tables)
 }
 
+/// XLSX (Office Open XML) reader implementation
+///
+/// Handles parsing of .xlsx workbook.xml, worksheets/*.xml and other parts
 pub struct XlsxReader<'a, R: std::io::Read + std::io::Seek> {
     archive: &'a mut ZipArchive<R>,
-    shared_strings: Vec<String>,
-    styles: Vec<String>,
+    shared_strings: Vec<Arc<str>>,
+    styles: Vec<Arc<str>>,
 }
 
 impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
@@ -285,9 +287,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
         let sheet_names = self.get_sheet_names()?;
         let hidden_sheets = self.read_hidden_sheets()?;
 
-        for name in sheet_names {
+        for (idx, name) in sheet_names.into_iter().enumerate() {
             let path = get_xlsx_sheet_path(self.archive, &name)?;
-            let mut sheet = Sheet::new(name.clone());
+            let sheet_index = idx as u16;
+            let mut sheet = Sheet::new(name.clone(), sheet_index);
             sheet.sheet_path = Some(path.clone());
             sheet.visible = !hidden_sheets.contains(&name);
 
@@ -304,6 +307,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
 
             sheet.used_range = dim_range;
 
+            sheet.cells.shrink_to_fit();
             sheets.push(sheet);
         }
 
@@ -329,10 +333,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
 
         // Check for macrosheets
         for i in 0..self.archive.len() {
-            if let Ok(file) = self.archive.by_index(i) {
-                if file.name().starts_with("xl/macrosheets/") {
-                    return Ok(true);
-                }
+            if let Ok(file) = self.archive.by_index(i)
+                && file.name().starts_with("xl/macrosheets/")
+            {
+                return Ok(true);
             }
         }
 
@@ -346,6 +350,99 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for XlsxReader<'a, R> 
     fn read_external_workbooks(&mut self) -> Result<Vec<super::ExternalWorkbook>> {
         extract_external_workbooks_xlsx(self.archive)
     }
+
+    fn read_modified_date(&mut self) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        extract_modified_date_xlsx(self.archive)
+    }
+
+    fn read_date1904(&mut self) -> Result<bool> {
+        extract_date1904_xlsx(self.archive)
+    }
+}
+
+/// Extract last modified date from docProps/core.xml
+fn extract_modified_date_xlsx(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    use chrono::{DateTime, Utc};
+
+    let core_xml = match archive.by_name("docProps/core.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(core_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+    let mut in_modified = false;
+    let mut modified_date: Option<DateTime<Utc>> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => {
+                // dcterms:modified or cp:modified
+                let name = e.name();
+                if name.as_ref().ends_with(b":modified") || name.as_ref() == b"modified" {
+                    in_modified = true;
+                }
+            }
+            Event::Text(e) if in_modified => {
+                let date_str = e.unescape()?.to_string();
+                // Parse ISO 8601 / RFC 3339 format
+                if let Ok(parsed) = DateTime::parse_from_rfc3339(&date_str) {
+                    modified_date = Some(parsed.with_timezone(&Utc));
+                }
+                in_modified = false;
+            }
+            Event::End(e) => {
+                let name = e.name();
+                if name.as_ref().ends_with(b":modified") || name.as_ref() == b"modified" {
+                    in_modified = false;
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(modified_date)
+}
+
+/// Extract date1904 setting from xl/workbook.xml
+fn extract_date1904_xlsx(
+    archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<bool> {
+    let workbook_xml = match archive.by_name("xl/workbook.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(false),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(workbook_xml));
+    reader.config_mut().trim_text(true);
+
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) | Event::Empty(e) => {
+                if e.name().as_ref() == b"workbookPr" {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"date1904" {
+                            let value = attr.unescape_value()?;
+                            return Ok(value == "1" || value.eq_ignore_ascii_case("true"));
+                        }
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(false)
 }
 
 pub fn extract_external_links_xlsx(
@@ -502,7 +599,7 @@ pub fn extract_external_workbooks_xlsx(
                         {
                             workbooks.push(ExternalWorkbook {
                                 index,
-                                path: target,
+                                path: super::parser_utils::extract_basename(&target),
                             });
                         }
                     }
@@ -577,6 +674,20 @@ fn translate_shared_formula(formula: &str, row_shift: i32, col_shift: i32) -> St
     })
 }
 
+// Type alias to avoid clippy::type_complexity warning
+type ParsedSheetData = (
+    HashMap<(u32, u32), Cell>,
+    Vec<u32>,
+    Vec<u32>,
+    Vec<(u32, u32, u32, u32)>,
+    usize,
+    Vec<String>,
+    Option<(u32, u32)>,
+);
+
+// Type alias to avoid clippy::type_complexity warning
+type SharedFormulaMap = HashMap<u32, Vec<(String, u32, u32, Option<(u32, u32, u32, u32)>)>>;
+
 impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
     fn get_sheet_names(&mut self) -> Result<Vec<String>> {
         let mut names = Vec::new();
@@ -604,18 +715,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
         Ok(names)
     }
 
-    fn parse_sheet_xml(
-        &mut self,
-        path: &str,
-    ) -> Result<(
-        HashMap<(u32, u32), Cell>,
-        Vec<u32>,
-        Vec<u32>,
-        Vec<(u32, u32, u32, u32)>,
-        usize,
-        Vec<String>,
-        Option<(u32, u32)>,
-    )> {
+    fn parse_sheet_xml(&mut self, path: &str) -> Result<ParsedSheetData> {
         let mut cells = HashMap::new();
         let mut hidden_columns = Vec::new();
         let mut hidden_rows = Vec::new();
@@ -623,10 +723,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
         let mut cf_count = 0;
         let mut cf_ranges = Vec::new();
         let mut dim_range = None;
-        let mut shared_formulas: HashMap<
-            u32,
-            Vec<(String, u32, u32, Option<(u32, u32, u32, u32)>)>,
-        > = HashMap::new();
+        let mut shared_formulas: SharedFormulaMap = HashMap::new();
 
         let sheet_xml = self.archive.by_name(path)?;
         let mut reader = Reader::from_reader(BufReader::new(sheet_xml));
@@ -739,15 +836,14 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                                 // Find matching definition by range
                                 let mut best_def = None;
                                 for def in defs {
-                                    if let Some((min_r, min_c, max_r, max_c)) = def.3 {
-                                        if row >= min_r
-                                            && row <= max_r
-                                            && col >= min_c
-                                            && col <= max_c
-                                        {
-                                            best_def = Some(def);
-                                            break;
-                                        }
+                                    if let Some((min_r, min_c, max_r, max_c)) = def.3
+                                        && row >= min_r
+                                        && row <= max_r
+                                        && col >= min_c
+                                        && col <= max_c
+                                    {
+                                        best_def = Some(def);
+                                        break;
                                     }
                                 }
 
@@ -774,19 +870,14 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                             row,
                             col,
                             value: value.clone(),
+                            formula: None,
                             num_fmt,
                         };
                         if let Some(mut f) = formula {
                             if f.starts_with('=') {
                                 f = f[1..].to_string();
                             }
-                            cell.value = match cell.value {
-                                CellValue::Formula {
-                                    cached_error: Some(err),
-                                    ..
-                                } => CellValue::formula_with_error(f, err),
-                                _ => CellValue::formula(f),
-                            };
+                            cell.formula = Some(f.into());
                         }
                         cells.insert((row, col), cell);
                     }
@@ -879,6 +970,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                                 row,
                                 col,
                                 value: CellValue::Empty,
+                                formula: None,
                                 num_fmt,
                             },
                         );
@@ -917,10 +1009,11 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                     }
                     _ => {}
                 },
-                Event::End(e) => match e.name().as_ref() {
-                    b"worksheet" => break,
-                    _ => {}
-                },
+                Event::End(e) => {
+                    if e.name().as_ref() == b"worksheet" {
+                        break;
+                    }
+                }
                 Event::Eof => break,
                 _ => {}
             }
@@ -961,18 +1054,22 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
     }
 }
 
+// Type alias to avoid clippy::type_complexity warning
+type ParsedCellData = (CellValue, Option<String>, Option<u32>, Option<String>);
+
 fn parse_cell_contents<R: std::io::BufRead>(
     reader: &mut Reader<R>,
     t_attr: &str,
-    shared_strings: &[String],
-    _styles: &[String],
+    shared_strings: &[Arc<str>],
+    _styles: &[Arc<str>],
     num_fmt: Option<&str>,
-) -> Result<(CellValue, Option<String>, Option<u32>, Option<String>)> {
+) -> Result<ParsedCellData> {
     let mut value = CellValue::Empty;
     let mut formula = None;
     let mut shared_si = None;
     let mut shared_ref = None;
     let mut potential_error = None; // Store potential error value from t="e"
+    let mut is_array_formula = false;
     let mut buf = Vec::new();
 
     loop {
@@ -988,7 +1085,12 @@ fn parse_cell_contents<R: std::io::BufRead>(
                     value = match t_attr {
                         "s" => {
                             let idx = v_text.parse::<usize>().unwrap_or(0);
-                            CellValue::Text(shared_strings.get(idx).cloned().unwrap_or_default())
+                            CellValue::Text(
+                                shared_strings
+                                    .get(idx)
+                                    .cloned()
+                                    .unwrap_or_else(|| Arc::from("")),
+                            )
                         }
                         "b" => CellValue::Boolean(v_text == "1"),
                         "e" => {
@@ -1002,11 +1104,11 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             // In XLSX, text format is indicated by num_fmt == "@"
                             if num_fmt == Some("@") {
                                 // Store as text even if it looks like a number
-                                CellValue::Text(v_text)
+                                CellValue::Text(Arc::from(v_text.as_str()))
                             } else if let Ok(n) = v_text.parse::<f64>() {
                                 CellValue::Number(n)
                             } else {
-                                CellValue::Text(v_text)
+                                CellValue::Text(Arc::from(v_text.as_str()))
                             }
                         }
                     };
@@ -1019,11 +1121,11 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             b"si" => {
                                 si = attr.unescape_value()?.parse::<u32>().ok();
                             }
-                            b"t" => {
-                                if attr.value.as_ref() == b"shared" {
-                                    is_shared = true;
-                                }
-                            }
+                            b"t" => match attr.value.as_ref() {
+                                b"shared" => is_shared = true,
+                                b"array" => is_array_formula = true,
+                                _ => {}
+                            },
                             b"ref" => {
                                 shared_ref = Some(attr.unescape_value()?.to_string());
                             }
@@ -1058,7 +1160,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
                             }
                             is_buf.clear();
                         }
-                        value = CellValue::Text(is_text);
+                        value = CellValue::Text(Arc::from(is_text.as_str()));
                     }
                 }
                 _ => {}
@@ -1080,10 +1182,17 @@ fn parse_cell_contents<R: std::io::BufRead>(
     //
     // Note: In valid spreadsheet files, t="e" ALWAYS has a formula. Errors without
     // formulas don't exist in Excel/ODS files.
-    if let Some(err) = potential_error {
-        if let Some(ref f) = formula {
-            // If t="e" is present with a formula, it's a formula that evaluated to an error
-            value = CellValue::formula_with_error(f.clone(), err);
+    if let Some(err) = potential_error
+        && let Some(ref f) = formula
+    {
+        // If t="e" is present with a formula, it's a formula that evaluated to an error.
+        // HEURISTIC: Legacy array formulas (CSE) often have t="e" and #VALUE! cached value
+        // as a placeholder even if they aren't real errors. We ignore #VALUE! if it's an array.
+        let looks_like_array = is_array_formula || f.contains(':');
+        if looks_like_array && err == "#VALUE!" {
+            // Array formula — keep value as-is (already set), formula will be set later
+        } else {
+            value = CellValue::Error(Arc::from(err.as_str()));
         }
     }
 
@@ -1092,7 +1201,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
 
 pub fn extract_shared_strings(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let mut strings = Vec::new();
     let ss_xml = match archive.by_name("xl/sharedStrings.xml") {
         Ok(file) => file,
@@ -1110,7 +1219,7 @@ pub fn extract_shared_strings(
                 current_string.push_str(&read_text_node(&mut reader)?);
             }
             Event::End(e) if e.name().as_ref() == b"si" => {
-                strings.push(current_string.clone());
+                strings.push(Arc::from(current_string.as_str()));
                 current_string.clear();
             }
             Event::Eof => break,
@@ -1126,7 +1235,7 @@ fn read_text_node<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<String>
     let mut text = String::new();
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Text(e) => text.push_str(&e.unescape()?.to_string()),
+            Event::Text(e) => text.push_str(e.unescape()?.as_ref()),
             Event::CData(e) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
             Event::End(_) => break,
             Event::Eof => break,
@@ -1212,17 +1321,15 @@ pub fn extract_hidden_sheets_from_xlsx(
                         let mut name = String::new();
                         let mut state = String::new();
 
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"name" => {
-                                        name = attr.unescape_value()?.to_string();
-                                    }
-                                    b"state" => {
-                                        state = attr.unescape_value()?.to_string();
-                                    }
-                                    _ => {}
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"name" => {
+                                    name = attr.unescape_value()?.to_string();
                                 }
+                                b"state" => {
+                                    state = attr.unescape_value()?.to_string();
+                                }
+                                _ => {}
                             }
                         }
 
@@ -1283,25 +1390,23 @@ pub fn extract_hidden_columns_rows_from_xlsx(
                         let mut max_col = 0u32;
                         let mut hidden = false;
 
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"min" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            min_col = val.saturating_sub(1); // Convert to 0-based
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"min" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        min_col = val.saturating_sub(1); // Convert to 0-based
                                     }
-                                    b"max" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            max_col = val.saturating_sub(1); // Convert to 0-based
-                                        }
-                                    }
-                                    b"hidden" => {
-                                        hidden = attr.unescape_value()? == "1"
-                                            || attr.unescape_value()?.to_lowercase() == "true";
-                                    }
-                                    _ => {}
                                 }
+                                b"max" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        max_col = val.saturating_sub(1); // Convert to 0-based
+                                    }
+                                }
+                                b"hidden" => {
+                                    hidden = attr.unescape_value()? == "1"
+                                        || attr.unescape_value()?.to_lowercase() == "true";
+                                }
+                                _ => {}
                             }
                         }
 
@@ -1316,20 +1421,18 @@ pub fn extract_hidden_columns_rows_from_xlsx(
                         let mut row_num = 0u32;
                         let mut hidden = false;
 
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"r" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            row_num = val.saturating_sub(1); // Convert to 0-based
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"r" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        row_num = val.saturating_sub(1); // Convert to 0-based
                                     }
-                                    b"hidden" => {
-                                        hidden = attr.unescape_value()? == "1"
-                                            || attr.unescape_value()?.to_lowercase() == "true";
-                                    }
-                                    _ => {}
                                 }
+                                b"hidden" => {
+                                    hidden = attr.unescape_value()? == "1"
+                                        || attr.unescape_value()?.to_lowercase() == "true";
+                                }
+                                _ => {}
                             }
                         }
 
@@ -1378,14 +1481,14 @@ pub fn extract_merged_cells_from_xlsx(
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 if e.name().as_ref() == b"mergeCell" {
                     for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            if attr.key.as_ref() == b"ref" {
-                                let ref_str = attr.unescape_value()?;
-                                if let Some((start_row, start_col, end_row, end_col)) =
-                                    parse_cell_range(&ref_str)
-                                {
-                                    merged_cells.push((start_row, start_col, end_row, end_col));
-                                }
+                        if let Ok(attr) = attr
+                            && attr.key.as_ref() == b"ref"
+                        {
+                            let ref_str = attr.unescape_value()?;
+                            if let Some((start_row, start_col, end_row, end_col)) =
+                                parse_cell_range(&ref_str)
+                            {
+                                merged_cells.push((start_row, start_col, end_row, end_col));
                             }
                         }
                     }
@@ -1441,7 +1544,7 @@ fn parse_cell_ref(cell_ref: &str) -> Option<(u32, u32)> {
 /// Returns a list of format strings indexed by style index (xf index)
 pub fn extract_formats_from_xlsx(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let formats = Vec::new();
     let mut num_fmts = HashMap::new();
 
@@ -1495,19 +1598,18 @@ pub fn extract_formats_from_xlsx(
                     b"numFmt" => {
                         let mut id = 0u32;
                         let mut code = String::new();
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"numFmtId" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            id = val;
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"numFmtId" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        id = val;
                                     }
-                                    b"formatCode" => {
-                                        code = attr.unescape_value().unwrap_or_default().into();
-                                    }
-                                    _ => {}
                                 }
+                                b"formatCode" => {
+                                    code =
+                                        attr.unescape_value().unwrap_or_default().replace('\\', "");
+                                }
+                                _ => {}
                             }
                         }
                         if !code.is_empty() {
@@ -1544,7 +1646,7 @@ pub fn extract_formats_from_xlsx(
 /// Actual implementation of parsing styles
 pub fn parse_styles(
     archive: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Arc<str>>> {
     let mut num_fmts = HashMap::new();
 
     // Built-in formats (same as above)
@@ -1597,19 +1699,18 @@ pub fn parse_styles(
                     b"numFmt" => {
                         let mut id = 0u32;
                         let mut code = String::new();
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"numFmtId" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            id = val;
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"numFmtId" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        id = val;
                                     }
-                                    b"formatCode" => {
-                                        code = attr.unescape_value().unwrap_or_default().into();
-                                    }
-                                    _ => {}
                                 }
+                                b"formatCode" => {
+                                    code =
+                                        attr.unescape_value().unwrap_or_default().replace('\\', "");
+                                }
+                                _ => {}
                             }
                         }
                         if !code.is_empty() {
@@ -1623,19 +1724,18 @@ pub fn parse_styles(
                         // Extract numFmtId
                         let mut num_fmt_id = 0u32;
                         for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                if attr.key.as_ref() == b"numFmtId" {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        num_fmt_id = val;
-                                    }
-                                }
+                            if let Ok(attr) = attr
+                                && attr.key.as_ref() == b"numFmtId"
+                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
+                            {
+                                num_fmt_id = val;
                             }
                         }
-                        // Look up format code
-                        let format_code = num_fmts
+                        // Look up format code and intern as Arc<str>
+                        let format_code: Arc<str> = num_fmts
                             .get(&num_fmt_id)
-                            .cloned()
-                            .unwrap_or_else(|| "General".to_string());
+                            .map(|s| Arc::from(s.as_str()))
+                            .unwrap_or_else(|| Arc::from("General"));
                         xfs.push(format_code);
                     }
                     _ => {}
@@ -1647,19 +1747,18 @@ pub fn parse_styles(
                         // Same as above, handle empty tag if it occurs (unlikely for numFmt with attrs)
                         let mut id = 0u32;
                         let mut code = String::new();
-                        for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                match attr.key.as_ref() {
-                                    b"numFmtId" => {
-                                        if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                            id = val;
-                                        }
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"numFmtId" => {
+                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
+                                        id = val;
                                     }
-                                    b"formatCode" => {
-                                        code = attr.unescape_value().unwrap_or_default().into();
-                                    }
-                                    _ => {}
                                 }
+                                b"formatCode" => {
+                                    code =
+                                        attr.unescape_value().unwrap_or_default().replace('\\', "");
+                                }
+                                _ => {}
                             }
                         }
                         if !code.is_empty() {
@@ -1669,18 +1768,17 @@ pub fn parse_styles(
                     b"xf" if in_cell_xfs => {
                         let mut num_fmt_id = 0u32;
                         for attr in e.attributes() {
-                            if let Ok(attr) = attr {
-                                if attr.key.as_ref() == b"numFmtId" {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<u32>() {
-                                        num_fmt_id = val;
-                                    }
-                                }
+                            if let Ok(attr) = attr
+                                && attr.key.as_ref() == b"numFmtId"
+                                && let Ok(val) = attr.unescape_value()?.parse::<u32>()
+                            {
+                                num_fmt_id = val;
                             }
                         }
-                        let format_code = num_fmts
+                        let format_code: Arc<str> = num_fmts
                             .get(&num_fmt_id)
-                            .cloned()
-                            .unwrap_or_else(|| "General".to_string());
+                            .map(|s| Arc::from(s.as_str()))
+                            .unwrap_or_else(|| Arc::from("General"));
                         xfs.push(format_code);
                     }
                     _ => {}
@@ -1732,24 +1830,22 @@ pub fn extract_cell_style_indices_from_xlsx(
                     let mut style_index = 0usize;
                     let mut has_style = false;
 
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            match attr.key.as_ref() {
-                                b"r" => {
-                                    let r_str = attr.unescape_value()?;
-                                    if let Some((r, c)) = parse_cell_ref(&r_str) {
-                                        row = r;
-                                        col = c;
-                                    }
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"r" => {
+                                let r_str = attr.unescape_value()?;
+                                if let Some((r, c)) = parse_cell_ref(&r_str) {
+                                    row = r;
+                                    col = c;
                                 }
-                                b"s" => {
-                                    if let Ok(val) = attr.unescape_value()?.parse::<usize>() {
-                                        style_index = val;
-                                        has_style = true;
-                                    }
-                                }
-                                _ => {}
                             }
+                            b"s" => {
+                                if let Ok(val) = attr.unescape_value()?.parse::<usize>() {
+                                    style_index = val;
+                                    has_style = true;
+                                }
+                            }
+                            _ => {}
                         }
                     }
 
@@ -1815,20 +1911,20 @@ pub fn extract_formulas_from_xlsx(
                         }
                     }
 
-                    if let Some(_s_idx) = si {
-                        if t.as_deref() == Some("shared") {
-                            // This might be the base or a consumer
-                            // We wait for the text content to see if it's the base
-                        }
+                    if let Some(_s_idx) = si
+                        && t.as_deref() == Some("shared")
+                    {
+                        // This might be the base or a consumer
+                        // We wait for the text content to see if it's the base
                     }
 
                     // Store si for the current cell to association after getting Text
-                    if let Some(s_idx) = si {
-                        if let Some((r, c)) = parse_cell_ref(&current_cell_ref) {
-                            // Temporarily store si to handle it in Text
-                            // We use a prefix to distinguish from actual formulas
-                            formulas.insert((r, c), format!("__SHARED__{}", s_idx));
-                        }
+                    if let Some(s_idx) = si
+                        && let Some((r, c)) = parse_cell_ref(&current_cell_ref)
+                    {
+                        // Temporarily store si to handle it in Text
+                        // We use a prefix to distinguish from actual formulas
+                        formulas.insert((r, c), format!("__SHARED__{}", s_idx));
                     }
                 }
                 _ => {}
@@ -1837,11 +1933,11 @@ pub fn extract_formulas_from_xlsx(
                 let formula_text = e.unescape()?.to_string();
                 if let Some((r, c)) = parse_cell_ref(&current_cell_ref) {
                     // Check if this cell was marked as shared
-                    if let Some(marker) = formulas.get(&(r, c)) {
-                        if marker.starts_with("__SHARED__") {
-                            let si: u32 = marker["__SHARED__".len()..].parse().unwrap();
-                            shared_formulas.insert(si, formula_text.clone());
-                        }
+                    if let Some(marker) = formulas.get(&(r, c))
+                        && marker.starts_with("__SHARED__")
+                    {
+                        let si: u32 = marker["__SHARED__".len()..].parse().unwrap();
+                        shared_formulas.insert(si, formula_text.clone());
                     }
                     formulas.insert((r, c), formula_text);
                 }
@@ -1956,7 +2052,7 @@ fn test_sheet_collection_xlsx() {
     let sheets = reader.read_sheets().unwrap();
 
     // Verify sheet count (should not include external sheets)
-    assert!(sheets.len() > 0, "Should have at least one sheet");
+    assert!(!sheets.is_empty(), "Should have at least one sheet");
 
     // Verify no external sheet references in names
     for sheet in &sheets {

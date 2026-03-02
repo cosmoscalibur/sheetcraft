@@ -16,7 +16,7 @@ fn extract_cell_references(
         let mut sheet_name = current_sheet.to_string();
 
         // Group 1: Outer sheet name wrapper
-        if let Some(_) = cap.get(1) {
+        if cap.get(1).is_some() {
             if let Some(quoted) = cap.get(2) {
                 sheet_name = quoted.as_str().to_string();
             } else if let Some(unquoted) = cap.get(3) {
@@ -96,7 +96,7 @@ fn main() {
 
     let (r, c) = parse_cell_ref(r_name);
     let cell = sheet.cells.get(&(r, c)).expect("Cell not found");
-    let formula = cell.value.as_formula().expect("Not a formula");
+    let formula = cell.as_formula().expect("Not a formula");
 
     println!("Formula: {}", formula);
     let refs = extract_cell_references(formula, &sheet_names, s_name, false);

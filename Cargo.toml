@@ -1,9 +1,9 @@
 [workspace]
-members = ["sheetrs", "sheetlint", "sheetstats", "sheetcli"]
+members = ["sheetrs", "sheetlint", "sheetstats", "sheetcli", "sheetrs-wasm"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 authors = ["Edward Villegas <cosmoscalibur@gmail.com>"]
 license = "MIT"
@@ -19,9 +19,6 @@ toml = "0.8"
 anyhow = "1.0"
 thiserror = "1.0"
 
-# Parallel processing
-rayon = "1.10"
-
 # CLI
 clap = { version = "4.5", features = ["derive", "cargo"] }
 
@@ -30,7 +27,7 @@ colored = "2.1"
 
 # XML parsing
 quick-xml = "0.37"
-zip = "2.2"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 # HTTP client for link validation
 reqwest = { version = "0.11", features = ["blocking"] }

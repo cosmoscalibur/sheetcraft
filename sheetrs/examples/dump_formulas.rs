@@ -17,24 +17,26 @@ fn main() {
             println!("  [FORMULA PARSING ERROR]: {}", err);
         }
         for ((row, col), cell) in sheet.cells {
-            match &cell.value {
-                CellValue::Formula {
-                    formula,
-                    cached_error,
-                } => {
-                    if let Some(err) = cached_error {
-                        println!(
-                            "  ({}, {}) [ERROR]: {} (Formula: {})",
-                            row, col, err, formula
-                        );
-                    } else {
-                        println!("  ({}, {}) [FORMULA]: {}", row, col, formula);
-                    }
+            if let Some(formula) = &cell.formula {
+                if cell.value.is_error() {
+                    println!(
+                        "  ({}, {}) [ERROR]: {} (Formula: {})",
+                        row,
+                        col,
+                        cell.value.as_error().unwrap_or("Unknown"),
+                        formula
+                    );
+                } else {
+                    println!("  ({}, {}) [FORMULA]: {}", row, col, formula);
                 }
-                CellValue::Text(t) => println!("  ({}, {}) [TEXT]: {}", row, col, t),
-                CellValue::Number(n) => println!("  ({}, {}) [NUMBER]: {}", row, col, n),
-                CellValue::Boolean(b) => println!("  ({}, {}) [BOOL]: {}", row, col, b),
-                CellValue::Empty => println!("  ({}, {}) [EMPTY]", row, col),
+            } else {
+                match &cell.value {
+                    CellValue::Text(t) => println!("  ({}, {}) [TEXT]: {}", row, col, t),
+                    CellValue::Number(n) => println!("  ({}, {}) [NUMBER]: {}", row, col, n),
+                    CellValue::Boolean(b) => println!("  ({}, {}) [BOOL]: {}", row, col, b),
+                    CellValue::Error(e) => println!("  ({}, {}) [ERROR]: {}", row, col, e),
+                    CellValue::Empty => println!("  ({}, {}) [EMPTY]", row, col),
+                }
             }
         }
     }

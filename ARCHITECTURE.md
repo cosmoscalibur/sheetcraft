@@ -20,8 +20,8 @@ The heart of the suite. It encapsulates all domain logic, file parsing, rule enf
 ### Key Modules
 
 - **`reader`**: Abstracts over file formats (XLSX, ODS).
-  - Uses `calamine` for efficient data reading.
-  - Complements with `quick-xml` for low-level XML parsing when `calamine` is insufficient (e.g., precise style information, structural editing).
+  - Uses `zip` and matching XML parsers (`quick-xml` or custom) for efficient data reading.
+  - Custom stream-based parsing logic for both formats ensures minimal memory footprint.
   - `Workbook` trait defines the common interface for all formats.
 
 - **`rules`**: Implements the linting logic.

@@ -58,7 +58,7 @@ sheetlint workbook.xlsx --format json > report.json
 **Key Rules:**
 
 - `ERR001`: Error cells (#DIV/0!, etc.)
-- `SEC001`: External links and metadata
+- `SEC001`: External workbook references
 - `PERF006`: Excessive conditional formatting
 - `UX002`: Inconsistent date formats
 - `SM001`: Excessive sheet counts
@@ -97,21 +97,8 @@ sheetcli input.xlsx --remove-sheets "Secrets" "Admin" --output cleaned.xlsx
 sheetcli input.xlsx --remove-ranges "OldRange" --output cleaned.xlsx
 ```
 
-## Debug Tools
-
-The suite includes several debug utilities in `sheetrs/examples/`:
-
-- **debug_formulas**: Inspect specific cell values and formulas
-- **dump_formulas**: Export all formulas from a workbook
-- **inspect_dependencies**: Trace cell dependency chains
-- **inspect_errors**: Examine error cells and their formulas
-
-Build with: `cargo build --release --examples`
-
 ## Roadmap
 
-- **ODS Support**: Full support implemented with custom XML parser. Feature
-  parity with XLSX achieved.
 - **Error Propagation Tracing**: Future versions may trace only the root cause
   error cell rather than reporting all affected cells.
 - **Python Bindings**: PyO3 bindings for direct integration with Python data
