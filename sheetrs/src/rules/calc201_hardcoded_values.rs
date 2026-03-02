@@ -108,6 +108,7 @@ impl HardcodedValuesInFormulasRule {
                 if !is_external_ref
                     && let Ok(val) = match_str.as_str().parse::<f64>()
                     && !self.is_ignored(val, ignored_values, ignore_ints, ignore_pow10)
+                    && !values.contains(&val)
                 {
                     values.push(val);
                 }
@@ -127,14 +128,11 @@ pub struct HardcodedValuesData {
 
 impl ViolationData for HardcodedValuesData {
     fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
-        let mut seen = Vec::new();
-        for v in &self.values {
-            let s = v.to_string();
-            if !seen.contains(&s) {
-                seen.push(s);
-            }
-        }
-        format!("Hardcoded values found in formula: {}", seen.join(", "))
+        let formatted: Vec<String> = self.values.iter().map(|v| v.to_string()).collect();
+        format!(
+            "Hardcoded values found in formula: {}",
+            formatted.join(", ")
+        )
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
