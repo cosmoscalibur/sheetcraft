@@ -25,13 +25,19 @@ The main benchmark script. Uses `/usr/bin/time -v` for comprehensive metrics:
 
 Benchmarks use production files in `tests/production/`.
 
+### Arc+Box+dedup+shrink+ods-no-clone (4172267)
+
+| Metric | XLSX | ODS |
+|--------|------|-----|
+| User time | 29.9s | 26.7s |
+| Peak RAM | 1315 MB | 1329 MB |
+| Binary size | 8.4M | - |
+
 ### ViolationData Refactoring (2cbc5fc)
 
 | Metric | XLSX | ODS |
 |--------|------|-----|
-| Total time | 28.0s | 24.1s |
 | User time | 27.2s | 23.3s |
-| CPU usage | 99% | 99% |
 | Peak RAM | 1528 MB | 1631 MB |
 | Binary size | 8.4M | - |
 
@@ -39,9 +45,7 @@ Benchmarks use production files in `tests/production/`.
 
 | Metric | XLSX | ODS |
 |--------|------|-----|
-| Total time | 36.6s | 29.7s |
 | User time | 35.7s | 28.8s |
-| CPU usage | 99% | 99% |
 | Peak RAM | 1457 MB | 1594 MB |
 | Binary size | 8.4M | - |
 
@@ -49,24 +53,18 @@ Benchmarks use production files in `tests/production/`.
 
 | Metric | XLSX | ODS |
 |--------|------|-----|
-| Total time | 31.8s | 26.6s |
 | User time | 30.4s | 25.2s |
-| CPU usage | 99.7% | 99.2% |
 | Peak RAM | 1744 MB | - |
 | Binary size | 8.3M | - |
 
 ### Memory dependencies (6db5c17)
 
-- Total time: 56.5s
 - User time: 55s
-- CPU usage: 99%
 - Peak RAM: 1927MB
 - Binary size: 8.6 MB
 
 ### Previous
 
-- Total time: 60.24s
 - User time: 58.25s
-- CPU usage: 99%
 - Peak RAM: 3616MB
 - Binary size: 8.9 MB

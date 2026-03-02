@@ -145,6 +145,14 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
         RuleId::Calc201
     }
 
+    fn name(&self) -> &str {
+        "Hardcoded Number"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::Calculations
+    }
+
     fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
         if let Some(formula) = cell.as_formula() {
             let ignored_values = self

@@ -152,6 +152,14 @@ impl WalkerRule for UnusedSheetsRule {
         RuleId::Ref306
     }
 
+    fn name(&self) -> &str {
+        "Unused Sheet"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::Reference
+    }
+
     fn on_workbook_end(&self, workbook: &Workbook, ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 

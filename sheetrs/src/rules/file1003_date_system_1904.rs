@@ -67,6 +67,14 @@ impl WalkerRule for DateSystem1904Rule {
         RuleId::File1003
     }
 
+    fn name(&self) -> &str {
+        "1904 Date System"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::File
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         self.check_date_system(workbook)
     }

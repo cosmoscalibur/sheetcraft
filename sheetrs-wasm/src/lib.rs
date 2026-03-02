@@ -23,15 +23,15 @@ struct RuleInfo {
 #[wasm_bindgen]
 pub fn get_rules_definition() -> Result<JsValue, JsValue> {
     let config = LinterConfig::default();
-    let rules = registry::create_all_rules(&config);
+    let metadata = registry::get_all_rule_metadata(&config);
 
-    let rules_info: Vec<RuleInfo> = rules
+    let rules_info: Vec<RuleInfo> = metadata
         .iter()
-        .map(|r| RuleInfo {
-            id: r.id().to_string(),
-            name: r.name().to_string(),
-            category: r.category().as_str().to_string(),
-            is_default: registry::DEFAULT_ACTIVE_RULES.contains(&r.id()),
+        .map(|m| RuleInfo {
+            id: m.id.to_string(),
+            name: m.name.clone(),
+            category: m.category.as_str().to_string(),
+            is_default: m.is_default,
         })
         .collect();
 

@@ -84,6 +84,14 @@ impl WalkerRule for ExcessiveSheetCountsRule {
         RuleId::Cpx501
     }
 
+    fn name(&self) -> &str {
+        "Sheet Counts"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::Complexity
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         let sheet_count = workbook.sheets.len() as u32;

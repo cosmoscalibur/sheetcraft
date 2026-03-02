@@ -28,6 +28,14 @@ impl WalkerRule for HasMacrosRule {
         RuleId::Vba1101
     }
 
+    fn name(&self) -> &str {
+        "Has Macros"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::VBA
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 

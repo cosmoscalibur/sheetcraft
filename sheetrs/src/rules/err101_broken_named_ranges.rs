@@ -38,6 +38,14 @@ impl WalkerRule for BrokenNamedRangesRule {
         RuleId::Err101
     }
 
+    fn name(&self) -> &str {
+        "Broken Named Ranges"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::ExcelErrors
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 

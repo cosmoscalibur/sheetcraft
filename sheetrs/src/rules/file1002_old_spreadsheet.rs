@@ -88,6 +88,14 @@ impl WalkerRule for OldSpreadsheetRule {
         RuleId::File1002
     }
 
+    fn name(&self) -> &str {
+        "Old Spreadsheet Format"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::File
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         self.check_age(workbook)
     }

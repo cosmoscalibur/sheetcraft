@@ -149,6 +149,14 @@ impl WalkerRule for EmptySheetsRule {
         RuleId::Ref303
     }
 
+    fn name(&self) -> &str {
+        "Empty Sheet"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::Reference
+    }
+
     fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         // Simple check: if cells is empty, it's an empty sheet
         // Note: Full referenced_sheets logic is handled by the LinterRule check()

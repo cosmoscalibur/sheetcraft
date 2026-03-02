@@ -48,6 +48,14 @@ impl WalkerRule for NonDescriptiveSheetNameRule {
         RuleId::Data701
     }
 
+    fn name(&self) -> &str {
+        "Non-Descriptive Sheet Name"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::Data
+    }
+
     fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         let normalized_name = sheet.name.to_lowercase();

@@ -97,6 +97,54 @@ pub fn get_all_valid_tokens() -> HashSet<String> {
     tokens
 }
 
+/// Metadata for a single linter rule (for API/UI consumers).
+pub struct RuleMetadata {
+    /// Unique rule identifier.
+    pub id: RuleId,
+    /// Human-readable rule name.
+    pub name: String,
+    /// Rule category.
+    pub category: RuleCategory,
+    /// Whether the rule is active by default.
+    pub is_default: bool,
+}
+
+/// Collect metadata from all rules (LinterRule + WalkerRule).
+///
+/// Deduplicates by `RuleId` so dual-impl rules appear only once.
+pub fn get_all_rule_metadata(config: &LinterConfig) -> Vec<RuleMetadata> {
+    let mut seen = HashSet::new();
+    let mut metadata = Vec::new();
+
+    // Walker rules first (preferred source for migrated rules)
+    for rule in create_all_walker_rules(config) {
+        if seen.insert(rule.id()) {
+            metadata.push(RuleMetadata {
+                id: rule.id(),
+                name: rule.name().to_string(),
+                category: rule.category(),
+                is_default: DEFAULT_ACTIVE_RULES.contains(&rule.id()),
+            });
+        }
+    }
+
+    // Legacy LinterRules (skipped if already present from walker)
+    for rule in create_all_rules(config) {
+        if seen.insert(rule.id()) {
+            metadata.push(RuleMetadata {
+                id: rule.id(),
+                name: rule.name().to_string(),
+                category: rule.category(),
+                is_default: DEFAULT_ACTIVE_RULES.contains(&rule.id()),
+            });
+        }
+    }
+
+    // Sort by rule ID string for stable ordering
+    metadata.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+    metadata
+}
+
 /// Create all enabled rules based on configuration
 pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     let all_rules = create_all_rules(config);

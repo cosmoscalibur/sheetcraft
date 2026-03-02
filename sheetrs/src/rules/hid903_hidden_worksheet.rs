@@ -35,6 +35,14 @@ impl WalkerRule for HiddenWorksheetRule {
         RuleId::Hid903
     }
 
+    fn name(&self) -> &str {
+        "Hidden Worksheet"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::Hidden
+    }
+
     fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 

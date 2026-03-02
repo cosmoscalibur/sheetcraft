@@ -110,6 +110,12 @@ pub trait WalkerRule: Send + Sync {
     /// Unique rule identifier
     fn id(&self) -> RuleId;
 
+    /// Human-readable rule name
+    fn name(&self) -> &str;
+
+    /// Rule category
+    fn category(&self) -> RuleCategory;
+
     /// Called once at the start of workbook processing
     fn on_workbook_start(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         Vec::new()

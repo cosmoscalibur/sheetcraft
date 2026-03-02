@@ -176,6 +176,14 @@ impl WalkerRule for CircularReferenceRule {
         RuleId::Calc202
     }
 
+    fn name(&self) -> &str {
+        "Circular Reference"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::Calculations
+    }
+
     fn on_cell(&self, sheet: &Sheet, cell: &Cell, ctx: &mut LinterContext) -> Vec<Violation> {
         if let Some(formula) = cell.as_formula() {
             let refs = extract_cell_references_walker(

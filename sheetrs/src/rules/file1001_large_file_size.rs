@@ -87,6 +87,14 @@ impl WalkerRule for LargeFileSizeRule {
         RuleId::File1001
     }
 
+    fn name(&self) -> &str {
+        "Large File Size"
+    }
+
+    fn category(&self) -> super::RuleCategory {
+        super::RuleCategory::File
+    }
+
     fn on_workbook_start(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         self.check_size(workbook)
     }

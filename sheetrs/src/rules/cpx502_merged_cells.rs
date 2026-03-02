@@ -69,6 +69,14 @@ impl WalkerRule for MergedCellsRule {
         RuleId::Cpx502
     }
 
+    fn name(&self) -> &str {
+        "Merged Cells"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::Complexity
+    }
+
     fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
