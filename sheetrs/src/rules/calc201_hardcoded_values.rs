@@ -122,8 +122,8 @@ impl HardcodedValuesInFormulasRule {
 /// Incident data for CALC201.
 #[derive(Debug)]
 pub struct HardcodedValuesData {
-    /// The hardcoded values found in the formula.
-    pub values: Vec<f64>,
+    /// The deduplicated hardcoded values found in the formula.
+    pub values: Box<[f64]>,
 }
 
 impl ViolationData for HardcodedValuesData {
@@ -180,7 +180,9 @@ impl WalkerRule for HardcodedValuesInFormulasRule {
                             col: cell.col,
                         },
                     ),
-                    HardcodedValuesData { values },
+                    HardcodedValuesData {
+                        values: values.into_boxed_slice(),
+                    },
                     Severity::Warning,
                 )];
             }
