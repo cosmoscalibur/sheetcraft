@@ -174,8 +174,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         Box::new(calc205_double_count::DoubleCountRule),
         // Reference Issues (3xx)
-        // ref301, ref302, ref303, ref304 moved to walker
-        Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
+        // ref301, ref302, ref303, ref304, ref305 moved to walker
         // ref306, ref307 moved to walker
         Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
         Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
@@ -263,6 +262,7 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
         // Reference (3xx)
         Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
+        Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
         // Hidden Information (9xx)
         Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
@@ -312,6 +312,7 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Ref303 => Box::new(ref303_empty_sheets::EmptySheetsRule),
         RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
         RuleId::Ref304 => Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
+        RuleId::Ref305 => Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
         RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
