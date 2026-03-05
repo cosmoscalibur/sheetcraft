@@ -35,7 +35,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **REF301** (Unused Defined Name) | `book::named_ranges (inter)`| Name defined, unused | - | ✅ | ✅ | Identifies named ranges that are never referenced by any formula. |
 | **REF302** (Duplicate Sheet Name) | `sheet::metadata (inter)` | "Tax" / "Tax " | - | ✅ | ✅ | Detects name collisions or visual labels duplicates across sheets. |
 | **REF303** (Empty Sheet) | `sheet::visibility` | Worksheet with no data | - | ✅ | ✅ | Flags worksheets that contain no records or visible objects. |
-| **REF304** (Large Used Range) | `sheet::layout` | UsedRange >> Data | `!REF303` | ✅ | ❌ | Identifies mismatched UsedRange dimensions vs real data bounds. |
+| **REF304** (Large Used Range) | `sheet::layout` | UsedRange >> Data | `!REF303` | ✅ | ✅ | Identifies mismatched UsedRange dimensions vs real data bounds. |
 | **REF305** (Blank Row or Column) | `sheet::layout` | Data -> 100 empty rows| `!REF304` | ✅ | ❌ | Detects excessive spacing. Only triggers if Large Used Range is not meta-flagged. |
 | **REF306** (Unused Sheet) | `sheet::ref (inter)` | No cross-sheet refs | `!REF303` | ✅ | ✅ | Identifies worksheets not referenced anywhere in the workbook. |
 | **REF307** (Whole Column or Row Reference) | `cell::formula` | `=SUM(A:A)` | - | ✅ | ✅ | Flags formulas referencing entire axes, increasing calculation cost. |

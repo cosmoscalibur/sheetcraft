@@ -2,26 +2,83 @@
 //!
 //! Description: Used range metadata extending significantly beyond actual data or formulas.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+/// Threshold for rows/columns beyond data.
+const THRESHOLD_ROWS: u32 = 2;
+/// Threshold for columns beyond data.
+const THRESHOLD_COLS: u32 = 2;
+
+/// Per-sheet tracked max data cell: sheet_index → (max_row, max_col).
+type SheetMaxMap = Mutex<HashMap<u16, (u32, u32)>>;
 
 /// Rule that detects excessively large used ranges.
 ///
 /// Uses a constant threshold of 2 rows/columns to detect when the used range
 /// extends significantly beyond actual data.
-#[derive(Default)]
-pub struct LargeUsedRangeRule {}
+pub struct LargeUsedRangeRule {
+    /// Per-sheet max data cell coordinates.
+    sheet_max: SheetMaxMap,
+}
 
 impl LargeUsedRangeRule {
-    /// Create a new instance
+    /// Create a new instance.
     pub fn new() -> Self {
-        Self {}
+        Self {
+            sheet_max: Mutex::new(HashMap::new()),
+        }
     }
 }
 
-impl LinterRule for LargeUsedRangeRule {
+impl Default for LargeUsedRangeRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Incident data for REF304.
+#[derive(Debug)]
+pub struct LargeUsedRangeData {
+    /// Used range from metadata (rows, cols).
+    pub used_range: (u32, u32),
+    /// Last cell with actual data (row, col).
+    pub last_data: (u32, u32),
+}
+
+impl ViolationData for LargeUsedRangeData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let last_used = CellReference::new(
+            self.used_range.0.saturating_sub(1),
+            self.used_range.1.saturating_sub(1),
+        );
+        let last_data = CellReference::new(self.last_data.0, self.last_data.1);
+        format!(
+            "Used range extends beyond data: last used cell {}, last data/formula cell {} (threshold: {}/{} rows/cols)",
+            last_used, last_data, THRESHOLD_ROWS, THRESHOLD_COLS,
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Check whether a cell value should count as real data.
+fn is_data_cell(cell: &Cell) -> bool {
+    match &cell.value {
+        crate::reader::workbook::CellValue::Empty => false,
+        crate::reader::workbook::CellValue::Text(s) => !s.trim().is_empty(),
+        _ => true,
+    }
+}
+
+impl WalkerRule for LargeUsedRangeRule {
     fn id(&self) -> RuleId {
         RuleId::Ref304
     }
@@ -34,56 +91,44 @@ impl LinterRule for LargeUsedRangeRule {
         RuleCategory::Reference
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-
-        for sheet in &workbook.sheets {
-            // Use constant threshold of 2 rows/columns
-            const THRESHOLD_ROWS: u32 = 2;
-            const THRESHOLD_COLS: u32 = 2;
-
-            if let Some((used_rows, used_cols)) = sheet.used_range {
-                // Find the last cell with actual data or formula
-                // Find the last cell with actual data or formula (ignoring empty strings)
-                // ODS parser may produce CellValue::Text("") for styled empty cells, which we want to ignore for this rule.
-                let last_data_cell = sheet
-                    .cells
-                    .values()
-                    .filter(|c| match &c.value {
-                        crate::reader::workbook::CellValue::Empty => false,
-                        crate::reader::workbook::CellValue::Text(s) => !s.trim().is_empty(),
-                        _ => true,
-                    })
-                    .fold(None, |acc: Option<(u32, u32)>, c| match acc {
-                        Some((max_r, max_c)) => Some((max_r.max(c.row), max_c.max(c.col))),
-                        None => Some((c.row, c.col)),
-                    });
-
-                if let Some((last_data_row, last_data_col)) = last_data_cell {
-                    let row_diff = used_rows.saturating_sub(last_data_row + 1);
-                    let col_diff = used_cols.saturating_sub(last_data_col + 1);
-
-                    if row_diff > THRESHOLD_ROWS || col_diff > THRESHOLD_COLS {
-                        use crate::violation::CellReference;
-
-                        let last_used_ref = CellReference::new(used_rows - 1, used_cols - 1);
-                        let last_data_ref = CellReference::new(last_data_row, last_data_col);
-
-                        violations.push(Violation::new(
-                            RuleId::Ref304,
-                            ViolationScope::Sheet(sheet.sheet_index),
-                            format!(
-                                "Used range extends beyond data: last used cell {}, last data/formula cell {} (threshold: {}/{} rows/cols)",
-                                last_used_ref, last_data_ref, THRESHOLD_ROWS, THRESHOLD_COLS
-                            ),
-                            Severity::Warning,
-                        ));
-                    }
-                }
-            }
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if is_data_cell(cell) {
+            let mut map = self.sheet_max.lock().unwrap();
+            let entry = map.entry(sheet.sheet_index).or_insert((0, 0));
+            entry.0 = entry.0.max(cell.row);
+            entry.1 = entry.1.max(cell.col);
         }
+        Vec::new()
+    }
 
-        Ok(violations)
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let map = self.sheet_max.lock().unwrap();
+        let last_data = match map.get(&sheet.sheet_index) {
+            Some(&max) => max,
+            None => return Vec::new(), // No data cells → skip
+        };
+
+        let (used_rows, used_cols) = match sheet.used_range {
+            Some(ur) => ur,
+            None => return Vec::new(),
+        };
+
+        let row_diff = used_rows.saturating_sub(last_data.0 + 1);
+        let col_diff = used_cols.saturating_sub(last_data.1 + 1);
+
+        if row_diff > THRESHOLD_ROWS || col_diff > THRESHOLD_COLS {
+            vec![Violation::with_data(
+                RuleId::Ref304,
+                ViolationScope::Sheet(sheet.sheet_index),
+                LargeUsedRangeData {
+                    used_range: (used_rows, used_cols),
+                    last_data,
+                },
+                Severity::Warning,
+            )]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -92,12 +137,10 @@ mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_large_used_range() {
         let mut cells = HashMap::new();
-        // Data only in first few cells
         cells.insert(
             (0, 0),
             Cell {
@@ -127,16 +170,63 @@ mod tests {
             ..Default::default()
         };
 
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            ..Default::default()
-        };
-
-        let rule = LargeUsedRangeRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let rule = LargeUsedRangeRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref304);
+    }
+
+    #[test]
+    fn test_no_violation_within_threshold() {
+        let mut cells = HashMap::new();
+        cells.insert(
+            (0, 0),
+            Cell {
+                formula: None,
+                num_fmt: None,
+                row: 0,
+                col: 0,
+                value: CellValue::Number(1.0),
+            },
+        );
+
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            sheet_index: 0,
+            cells,
+            used_range: Some((2, 2)), // Only 1 row/col beyond data
+            ..Default::default()
+        };
+
+        let rule = LargeUsedRangeRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
+
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn test_empty_sheet_no_violation() {
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            sheet_index: 0,
+            cells: HashMap::new(),
+            used_range: Some((100, 100)),
+            ..Default::default()
+        };
+
+        let rule = LargeUsedRangeRule::new();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
+
+        assert!(violations.is_empty());
     }
 }
