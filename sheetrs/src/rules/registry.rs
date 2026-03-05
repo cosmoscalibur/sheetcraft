@@ -167,18 +167,14 @@ pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
 pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
     vec![
         // Excel Errors (1xx)
-        // err101 moved to walker
-        Box::new(err102_error_cells::ErrorCellsRule),
-        Box::new(err103_ref_to_error::RefToErrorRule),
+        // err101, err102, err103 moved to walker
         // Unreliable Calculations (2xx)
         // calc201, calc202 moved to walker
         Box::new(calc203_double_operator::DoubleOperatorRule),
         Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         Box::new(calc205_double_count::DoubleCountRule),
         // Reference Issues (3xx)
-        Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule),
-        Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
-        // ref303 moved to walker
+        // ref301, ref302, ref303 moved to walker
         Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
         Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         // ref306 moved to walker
@@ -229,8 +225,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(dat708_sensitive_data::SensitiveDataRule),
         // External References (8xx)
         Box::new(ext801_name_ext_ref::NameExtRefRule),
-        Box::new(ext802_external_workbook::ExternalWorkbooksRule::new(config)),
-        Box::new(ext803_web_urls::WebUrlsRule::new(config)),
+        // ext802, ext803 moved to walker
         Box::new(ext804_pivot_ext_ref::PivotExtRefRule),
         Box::new(ext805_chart_ext_ref::ChartExtRefRule),
         // Hidden Information (9xx)
@@ -255,7 +250,12 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         // Unreliable Calculations (2xx)
         Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config)),
         Box::new(calc202_circular_references::CircularReferenceRule::new()),
+        // ERR102/ERR103 after CALC202 so on_workbook_end reads circular_cells
+        Box::new(err102_error_cells::ErrorCellsRule),
+        Box::new(err103_ref_to_error::RefToErrorRule),
         // Reference Issues (3xx)
+        Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
+        Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
         Box::new(ref303_empty_sheets::EmptySheetsRule),
         Box::new(ref306_unused_sheets::UnusedSheetsRule),
         // Complexity (5xx)
@@ -265,6 +265,9 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
         // Hidden Information (9xx)
         Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
+        // External References (8xx)
+        Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
+        Box::new(ext803_web_urls::WebUrlsRule::new(config)),
         // Files & Settings (10xx)
         Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
@@ -296,15 +299,21 @@ pub fn create_enabled_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerR
 pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dyn WalkerRule> {
     match rule.id() {
         RuleId::Err101 => Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
+        RuleId::Err102 => Box::new(err102_error_cells::ErrorCellsRule),
+        RuleId::Err103 => Box::new(err103_ref_to_error::RefToErrorRule),
         RuleId::Calc201 => {
             Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
         }
         RuleId::Calc202 => Box::new(calc202_circular_references::CircularReferenceRule::new()),
+        RuleId::Ref301 => Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
+        RuleId::Ref302 => Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
         RuleId::Ref303 => Box::new(ref303_empty_sheets::EmptySheetsRule),
         RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
         RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        RuleId::Ext802 => Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
+        RuleId::Ext803 => Box::new(ext803_web_urls::WebUrlsRule::new(config)),
         RuleId::Hid903 => Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
         RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
@@ -322,17 +331,17 @@ mod tests {
     fn test_prefix_activation() {
         let mut config = LinterConfig::default();
         config.global.enabled_rules.insert("ERR".to_string());
-        let enabled = create_enabled_rules(&config);
+        // ERR102 is now a walker rule
+        let enabled = create_enabled_walker_rules(&config);
         assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
     }
 
     #[test]
     fn test_default_activation() {
         let config = LinterConfig::default();
-        let enabled = create_enabled_rules(&config);
-        assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
-        // ERR101 is now a walker rule
         let walker_enabled = create_enabled_walker_rules(&config);
         assert!(walker_enabled.iter().any(|r| r.id() == RuleId::Err101));
+        assert!(walker_enabled.iter().any(|r| r.id() == RuleId::Err102));
+        assert!(walker_enabled.iter().any(|r| r.id() == RuleId::Err103));
     }
 }

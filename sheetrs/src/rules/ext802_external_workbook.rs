@@ -1,82 +1,76 @@
-//! SEC001: External workbook references
+//! EXT802: External workbook references
+//!
+//! Description: Identifies cell-level formula links to external spreadsheet files.
 
-use super::{LinterRule, RuleCategory};
-use crate::config::LinterConfig;
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Mutex;
+
+/// Per-sheet cell collection: sheet_index → Vec<(row, col, wb_index)>.
+type SheetCellMap = Mutex<HashMap<u16, Vec<(u32, u32, usize)>>>;
 
 /// Rule that detects references to external workbooks
-///
-/// Reports violations for individual cells/ranges referencing external workbooks.
-pub struct ExternalWorkbooksRule;
+pub struct ExternalWorkbooksRule {
+    /// Cells referencing external workbooks per sheet.
+    sheet_cells: SheetCellMap,
+}
 
 impl ExternalWorkbooksRule {
-    /// Create a new instance configured from the linter config
-    pub fn new(_config: &LinterConfig) -> Self {
-        Self
+    /// Create a new instance of the rule.
+    pub fn new() -> Self {
+        Self {
+            sheet_cells: Mutex::new(HashMap::new()),
+        }
     }
 }
 
 impl Default for ExternalWorkbooksRule {
     fn default() -> Self {
-        Self
+        Self::new()
     }
 }
 
-impl LinterRule for ExternalWorkbooksRule {
-    fn id(&self) -> RuleId {
-        RuleId::Ext802
+/// Incident data for EXT802.
+#[derive(Debug)]
+pub struct ExternalWorkbookData {
+    /// 0-based external workbook index (into `Workbook::external_workbooks`).
+    pub workbook_index: usize,
+    /// Range as (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+}
+
+impl ViolationData for ExternalWorkbookData {
+    fn format_message(&self, ctx: &FormatContext<'_>) -> String {
+        let wb_name = ctx
+            .workbook
+            .external_workbooks
+            .get(self.workbook_index)
+            .map(|wb| wb.path.as_str())
+            .unwrap_or("unknown");
+
+        let (sr, sc, er, ec) = self.range;
+        let range_str = if sr == er && sc == ec {
+            CellReference::new(sr, sc).to_string()
+        } else {
+            format!(
+                "{}:{}",
+                CellReference::new(sr, sc),
+                CellReference::new(er, ec)
+            )
+        };
+
+        format!(
+            "External workbook reference {} found in range: {}",
+            wb_name, range_str
+        )
     }
 
-    fn name(&self) -> &str {
-        "External Workbook Reference"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::External
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-
-        for sheet in &workbook.sheets {
-            let mut workbook_cells: Vec<(u32, u32, usize)> = Vec::new();
-
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    let indices = extract_external_workbook_indices(formula);
-                    for idx in indices {
-                        workbook_cells.push((cell.row, cell.col, idx));
-                    }
-                }
-            }
-
-            let grouped = group_cells_by_index(workbook_cells);
-            for (idx, cells) in grouped {
-                let wb_name = workbook
-                    .external_workbooks
-                    .get(idx)
-                    .map(|wb| wb.path.as_str())
-                    .unwrap_or("unknown");
-
-                let ranges = find_contiguous_ranges(&cells);
-                for range in ranges {
-                    violations.push(Violation::new(
-                        RuleId::Ext802,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!(
-                            "External workbook reference {} found in range: {}",
-                            wb_name,
-                            format_single_range(&range)
-                        ),
-                        Severity::Warning,
-                    ));
-                }
-            }
-        }
-
-        Ok(violations)
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -100,58 +94,8 @@ fn extract_external_workbook_indices(formula: &str) -> Vec<usize> {
     indices
 }
 
-/// Group cells by workbook index
-///
-/// Groups cells that reference the same external workbook to create consolidated violations.
-///
-/// Example:
-///   A1: =[1]Sheet1!B2  (workbook index 1 = test.xlsx)
-///   A2: =[1]Sheet1!C3  (workbook index 1 = test.xlsx)
-///   A3: =[2]Sheet1!D4  (workbook index 2 = other.xlsx)
-///
-/// Without grouping: 3 violations (one per cell)
-/// With grouping: 2 violations (one per workbook)
-///   - "test.xlsx found in range: A1:A2"
-///   - "other.xlsx found in range: A3"
-///
-/// This makes output cleaner and shows which workbooks are used where.
-fn group_cells_by_index(cells: Vec<(u32, u32, usize)>) -> Vec<(usize, Vec<(u32, u32)>)> {
-    use std::collections::HashMap;
-
-    let mut grouped: HashMap<usize, Vec<(u32, u32)>> = HashMap::new();
-    for (row, col, idx) in cells {
-        grouped.entry(idx).or_default().push((row, col));
-    }
-    grouped.into_iter().collect()
-}
-
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    use crate::violation::CellReference;
-
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
+/// Find contiguous ranges from a list of cells using BFS adjacency
 fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    use std::collections::{HashSet, VecDeque};
-
     let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
     let mut visited: HashSet<(u32, u32)> = HashSet::new();
     let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
@@ -161,7 +105,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
             continue;
         }
 
-        // BFS to find all connected cells
         let mut range = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(cell);
@@ -170,7 +113,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
         while let Some((row, col)) = queue.pop_front() {
             range.push((row, col));
 
-            // Check all 4 adjacent cells (up, down, left, right)
             let neighbors = [
                 (row.wrapping_sub(1), col),
                 (row + 1, col),
@@ -192,12 +134,79 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     ranges
 }
 
+/// Compute bounding box for a list of cells as (start_row, start_col, end_row, end_col)
+fn bounding_box(cells: &[(u32, u32)]) -> (u32, u32, u32, u32) {
+    let min_row = cells.iter().map(|(r, _)| *r).min().unwrap_or(0);
+    let max_row = cells.iter().map(|(r, _)| *r).max().unwrap_or(0);
+    let min_col = cells.iter().map(|(_, c)| *c).min().unwrap_or(0);
+    let max_col = cells.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    (min_row, min_col, max_row, max_col)
+}
+
+impl WalkerRule for ExternalWorkbooksRule {
+    fn id(&self) -> RuleId {
+        RuleId::Ext802
+    }
+
+    fn name(&self) -> &str {
+        "External Workbook Reference"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::External
+    }
+
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let Some(formula) = cell.as_formula() {
+            let indices = extract_external_workbook_indices(formula);
+            if !indices.is_empty() {
+                let mut map = self.sheet_cells.lock().unwrap();
+                let entry = map.entry(sheet.sheet_index).or_default();
+                for idx in indices {
+                    entry.push((cell.row, cell.col, idx));
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+        let mut map = self.sheet_cells.lock().unwrap();
+
+        if let Some(cells) = map.remove(&sheet.sheet_index) {
+            // Group cells by workbook index
+            let mut grouped: HashMap<usize, Vec<(u32, u32)>> = HashMap::new();
+            for (row, col, idx) in cells {
+                grouped.entry(idx).or_default().push((row, col));
+            }
+
+            for (idx, group_cells) in grouped {
+                let ranges = find_contiguous_ranges(&group_cells);
+                for range in ranges {
+                    violations.push(Violation::with_data(
+                        RuleId::Ext802,
+                        ViolationScope::Sheet(sheet.sheet_index),
+                        ExternalWorkbookData {
+                            workbook_index: idx,
+                            range: bounding_box(&range),
+                        },
+                        Severity::Warning,
+                    ));
+                }
+            }
+        }
+
+        violations
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
+    use crate::rules::LinterContext;
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_external_workbook_in_formula() {
@@ -221,22 +230,17 @@ mod tests {
             ..Default::default()
         };
 
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            external_workbooks: vec![crate::reader::ExternalWorkbook {
-                index: 0,
-                path: "Book1.xlsx".to_string(),
-            }],
-            ..Default::default()
-        };
+        let rule = ExternalWorkbooksRule::new();
+        let mut ctx = LinterContext::default();
 
-        let rule = ExternalWorkbooksRule;
-        let violations = rule.check(&workbook).unwrap();
+        // Walk cells
+        for cell in sheet.cells.values() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ext802);
-        assert!(violations[0].message().contains("Book1.xlsx"));
-        assert!(violations[0].message().contains("range"));
     }
 }

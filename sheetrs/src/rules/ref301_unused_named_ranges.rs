@@ -2,16 +2,51 @@
 //!
 //! Description: Named ranges that are defined but never used in any formula.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet, Workbook};
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 use std::collections::HashSet;
+use std::sync::Mutex;
 
 /// Rule that detects unused named ranges
-pub struct UnusedNamedRangesRule;
+pub struct UnusedNamedRangesRule {
+    /// Named ranges found in formulas during the walk.
+    used_names: Mutex<HashSet<String>>,
+}
 
-impl LinterRule for UnusedNamedRangesRule {
+impl UnusedNamedRangesRule {
+    /// Create a new instance of the rule.
+    pub fn new() -> Self {
+        Self {
+            used_names: Mutex::new(HashSet::new()),
+        }
+    }
+}
+
+impl Default for UnusedNamedRangesRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Incident data for REF301.
+#[derive(Debug)]
+pub struct UnusedNamedRangeData {
+    /// The unused named range name.
+    pub name: String,
+}
+
+impl ViolationData for UnusedNamedRangeData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!("Named range '{}' is defined but never used", self.name)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for UnusedNamedRangesRule {
     fn id(&self) -> RuleId {
         RuleId::Ref301
     }
@@ -24,44 +59,42 @@ impl LinterRule for UnusedNamedRangesRule {
         RuleCategory::Reference
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
+    fn on_cell(&self, _sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let Some(formula) = cell.as_formula() {
+            let mut used = self.used_names.lock().unwrap();
+            // Record the formula text; matching is deferred to on_workbook_end
+            used.insert(formula.to_string());
+        }
+        Vec::new()
+    }
 
-        // Collect all named ranges
-        let named_ranges: HashSet<&str> = workbook
+    fn on_workbook_end(&self, workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+        let formulas = self.used_names.lock().unwrap();
+
+        // Collect non-built-in named ranges
+        let named_ranges: Vec<&str> = workbook
             .defined_names
             .keys()
             .filter(|name| !name.starts_with("_xlnm."))
             .map(|s| s.as_str())
             .collect();
 
-        // Collect all named ranges used in formulas
-        let mut used_names = HashSet::new();
-        for sheet in &workbook.sheets {
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    for name in &named_ranges {
-                        if formula.contains(name) {
-                            used_names.insert(*name);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Report unused named ranges
         for name in named_ranges {
-            if !used_names.contains(name) {
-                violations.push(Violation::new(
+            let is_used = formulas.iter().any(|f| f.contains(name));
+            if !is_used {
+                violations.push(Violation::with_data(
                     RuleId::Ref301,
                     ViolationScope::Book,
-                    format!("Named range '{}' is defined but never used", name),
+                    UnusedNamedRangeData {
+                        name: name.to_string(),
+                    },
                     Severity::Warning,
                 ));
             }
         }
 
-        Ok(violations)
+        violations
     }
 }
 
@@ -69,6 +102,7 @@ impl LinterRule for UnusedNamedRangesRule {
 mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
+    use crate::rules::LinterContext;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -105,8 +139,15 @@ mod tests {
             ..Default::default()
         };
 
-        let rule = UnusedNamedRangesRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rule = UnusedNamedRangesRule::new();
+        let mut ctx = LinterContext::default();
+
+        // Walk cells
+        for cell in workbook.sheets[0].cells.values() {
+            rule.on_cell(&workbook.sheets[0], cell, &mut ctx);
+        }
+
+        let violations = rule.on_workbook_end(&workbook, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref301);

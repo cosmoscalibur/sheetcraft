@@ -32,8 +32,8 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **REF301** (Unused Defined Name) | `book::named_ranges (inter)`| Name defined, unused | - | ✅ | ❌ | Identifies named ranges that are never referenced by any formula. |
-| **REF302** (Duplicate Sheet Name) | `sheet::metadata (inter)` | "Tax" / "Tax " | - | ✅ | ❌ | Detects name collisions or visual labels duplicates across sheets. |
+| **REF301** (Unused Defined Name) | `book::named_ranges (inter)`| Name defined, unused | - | ✅ | ✅ | Identifies named ranges that are never referenced by any formula. |
+| **REF302** (Duplicate Sheet Name) | `sheet::metadata (inter)` | "Tax" / "Tax " | - | ✅ | ✅ | Detects name collisions or visual labels duplicates across sheets. |
 | **REF303** (Empty Sheet) | `sheet::visibility` | Worksheet with no data | - | ✅ | ✅ | Flags worksheets that contain no records or visible objects. |
 | **REF304** (Large Used Range) | `sheet::layout` | UsedRange >> Data | `!REF303` | ✅ | ❌ | Identifies mismatched UsedRange dimensions vs real data bounds. |
 | **REF305** (Blank Row or Column) | `sheet::layout` | Data -> 100 empty rows| `!REF304` | ✅ | ❌ | Detects excessive spacing. Only triggers if Large Used Range is not meta-flagged. |
@@ -96,8 +96,8 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **EXT801** (Name Ext Ref) | `book::named_ranges` | `RefersTo: [B.xlsx]` | - | ❌ | ❌ | Identifies named range links to external spreadsheet files. |
-| **EXT802** (External Workbook Reference) | `cell::formula` | `=[Book1.xlsx]...` | - | ✅ | ❌ | Identifies cell-level formula links to external spreadsheet files. |
-| **EXT803** (Web URLs) | `cell::formula` | `HYPERLINK(http..)` | - | ✅ | ❌ | Detects outbound web navigation links within formula logic. |
+| **EXT802** (External Workbook Reference) | `cell::formula` | `=[Book1.xlsx]...` | - | ✅ | ✅ | Identifies cell-level formula links to external spreadsheet files. |
+| **EXT803** (Web URLs) | `cell::formula` | `HYPERLINK(http..)` | - | ✅ | ✅ | Detects outbound web navigation links within formula logic. |
 | **EXT804** (Pivot Ext Ref) | `sheet::metadata` | Pivot linked to file | - | ❌ | ❌ | Flags Pivot structures dependent on external data files. |
 | **EXT805** (Chart Ext Ref) | `sheet::metadata` | Chart linked to file | - | ❌ | ❌ | Flags Charts dependent on data sources in external files. |
 

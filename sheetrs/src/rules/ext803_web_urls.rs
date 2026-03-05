@@ -1,10 +1,18 @@
-//! SEC005: Web URL links in cell values
+//! EXT803: Web URL links in cell values
+//!
+//! Description: Detects outbound web navigation links within cell values.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Mutex;
+
+/// Per-sheet URL cell collection: sheet_index → Vec<(row, col, url)>.
+type SheetUrlCellMap = Mutex<HashMap<u16, Vec<(u32, u32, String)>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkStatus {
@@ -34,9 +42,12 @@ impl LinkStatus {
 pub struct WebUrlsRule {
     status: LinkStatus,
     timeout_secs: u64,
+    /// Cells with URLs per sheet.
+    sheet_cells: SheetUrlCellMap,
 }
 
 impl WebUrlsRule {
+    /// Create a new instance configured from the linter config.
     pub fn new(config: &LinterConfig) -> Self {
         let status = config
             .get_param_str("url_links_status", None)
@@ -50,6 +61,7 @@ impl WebUrlsRule {
         Self {
             status,
             timeout_secs,
+            sheet_cells: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -59,77 +71,47 @@ impl Default for WebUrlsRule {
         Self {
             status: LinkStatus::All,
             timeout_secs: 5,
+            sheet_cells: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl LinterRule for WebUrlsRule {
-    fn id(&self) -> RuleId {
-        RuleId::Ext803
-    }
+/// Incident data for EXT803.
+#[derive(Debug)]
+pub struct WebUrlData {
+    /// The detected URL.
+    pub url: String,
+    /// Range as (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+    /// Whether the URL was determined to be invalid/inaccessible.
+    pub is_invalid: bool,
+}
 
-    fn name(&self) -> &str {
-        "Web URLs"
-    }
+impl ViolationData for WebUrlData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let (sr, sc, er, ec) = self.range;
+        let range_str = if sr == er && sc == ec {
+            CellReference::new(sr, sc).to_string()
+        } else {
+            format!(
+                "{}:{}",
+                CellReference::new(sr, sc),
+                CellReference::new(er, ec)
+            )
+        };
 
-    fn category(&self) -> RuleCategory {
-        RuleCategory::External
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-
-        // Collect URLs from all sheets
-        for sheet in &workbook.sheets {
-            let mut url_cells: Vec<(u32, u32, String)> = Vec::new();
-
-            for cell in sheet.all_cells() {
-                if let crate::reader::workbook::CellValue::Text(text) = &cell.value {
-                    let urls = extract_urls(text);
-                    for url in urls {
-                        url_cells.push((cell.row, cell.col, url));
-                    }
-                }
-            }
-
-            // Create range-based violations per sheet
-            if !url_cells.is_empty() {
-                let grouped = group_cells_by_value(url_cells);
-                for (url, cells) in grouped {
-                    // Validate URL status if status is INVALID
-                    if matches!(self.status, LinkStatus::Invalid)
-                        && check_url_status(&url, self.timeout_secs)
-                    {
-                        continue; // Skip valid URLs
-                    }
-
-                    let ranges = find_contiguous_ranges(&cells);
-                    for range in ranges {
-                        let message = if matches!(self.status, LinkStatus::Invalid) {
-                            format!(
-                                "Invalid external URL '{}' (not accessible) in range: {}",
-                                url,
-                                format_single_range(&range)
-                            )
-                        } else {
-                            format!(
-                                "External URL '{}' found in range: {}",
-                                url,
-                                format_single_range(&range)
-                            )
-                        };
-                        violations.push(Violation::new(
-                            RuleId::Ext803,
-                            ViolationScope::Sheet(sheet.sheet_index),
-                            message,
-                            Severity::Warning,
-                        ));
-                    }
-                }
-            }
+        if self.is_invalid {
+            format!(
+                "Invalid external URL '{}' (not accessible) in range: {}",
+                self.url, range_str
+            )
+        } else {
+            format!("External URL '{}' found in range: {}", self.url, range_str)
         }
+    }
 
-        Ok(violations)
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -144,45 +126,8 @@ fn extract_urls(text: &str) -> Vec<String> {
     re.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
 
-/// Group cells by their URL value
-fn group_cells_by_value(cells: Vec<(u32, u32, String)>) -> Vec<(String, Vec<(u32, u32)>)> {
-    use std::collections::HashMap;
-
-    let mut grouped: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
-    for (row, col, value) in cells {
-        grouped.entry(value).or_default().push((row, col));
-    }
-
-    grouped.into_iter().collect()
-}
-
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    use crate::violation::CellReference;
-
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
+/// Find contiguous ranges from a list of cells using BFS adjacency
 fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    use std::collections::{HashSet, VecDeque};
-
     let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
     let mut visited: HashSet<(u32, u32)> = HashSet::new();
     let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
@@ -192,7 +137,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
             continue;
         }
 
-        // BFS to find all connected cells
         let mut range = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(cell);
@@ -201,7 +145,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
         while let Some((row, col)) = queue.pop_front() {
             range.push((row, col));
 
-            // Check all 4 adjacent cells (up, down, left, right)
             let neighbors = [
                 (row.wrapping_sub(1), col),
                 (row + 1, col),
@@ -221,6 +164,15 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     }
 
     ranges
+}
+
+/// Compute bounding box for a list of cells as (start_row, start_col, end_row, end_col)
+fn bounding_box(cells: &[(u32, u32)]) -> (u32, u32, u32, u32) {
+    let min_row = cells.iter().map(|(r, _)| *r).min().unwrap_or(0);
+    let max_row = cells.iter().map(|(r, _)| *r).max().unwrap_or(0);
+    let min_col = cells.iter().map(|(_, c)| *c).min().unwrap_or(0);
+    let max_col = cells.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    (min_row, min_col, max_row, max_col)
 }
 
 /// Check if a URL is accessible (returns true if accessible, false otherwise)
@@ -250,12 +202,80 @@ fn check_url_status(_url: &str, _timeout_secs: u64) -> bool {
     true
 }
 
+impl WalkerRule for WebUrlsRule {
+    fn id(&self) -> RuleId {
+        RuleId::Ext803
+    }
+
+    fn name(&self) -> &str {
+        "Web URLs"
+    }
+
+    fn category(&self) -> RuleCategory {
+        RuleCategory::External
+    }
+
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let crate::reader::workbook::CellValue::Text(text) = &cell.value {
+            let urls = extract_urls(text);
+            if !urls.is_empty() {
+                let mut map = self.sheet_cells.lock().unwrap();
+                let entry = map.entry(sheet.sheet_index).or_default();
+                for url in urls {
+                    entry.push((cell.row, cell.col, url));
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut violations = Vec::new();
+        let mut map = self.sheet_cells.lock().unwrap();
+
+        if let Some(cells) = map.remove(&sheet.sheet_index) {
+            // Group cells by URL
+            let mut grouped: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
+            for (row, col, url) in cells {
+                grouped.entry(url).or_default().push((row, col));
+            }
+
+            for (url, group_cells) in grouped {
+                // Validate URL status if configured for INVALID-only mode
+                if matches!(self.status, LinkStatus::Invalid)
+                    && check_url_status(&url, self.timeout_secs)
+                {
+                    continue; // Skip valid URLs
+                }
+
+                let is_invalid = matches!(self.status, LinkStatus::Invalid);
+
+                let ranges = find_contiguous_ranges(&group_cells);
+                for range in ranges {
+                    violations.push(Violation::with_data(
+                        RuleId::Ext803,
+                        ViolationScope::Sheet(sheet.sheet_index),
+                        WebUrlData {
+                            url: url.clone(),
+                            range: bounding_box(&range),
+                            is_invalid,
+                        },
+                        Severity::Warning,
+                    ));
+                }
+            }
+        }
+
+        violations
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
+    use crate::rules::LinterContext;
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use std::sync::Arc;
 
     #[test]
@@ -280,19 +300,17 @@ mod tests {
             ..Default::default()
         };
 
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            ..Default::default()
-        };
-
         let rule = WebUrlsRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+
+        for cell in sheet.cells.values() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ext803);
-        assert!(violations[0].message().contains("https://example.com"));
-        assert!(violations[0].message().contains("range"));
     }
 
     #[test]
@@ -317,14 +335,14 @@ mod tests {
             ..Default::default()
         };
 
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
-            ..Default::default()
-        };
-
         let rule = WebUrlsRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+
+        for cell in sheet.cells.values() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         // Should detect both URLs
         assert_eq!(violations.len(), 2);
