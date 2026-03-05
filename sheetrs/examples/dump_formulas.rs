@@ -23,7 +23,9 @@ fn main() {
                         "  ({}, {}) [ERROR]: {} (Formula: {})",
                         row,
                         col,
-                        cell.value.as_error().unwrap_or("Unknown"),
+                        cell.value
+                            .as_error()
+                            .map_or("Unknown".to_string(), |e| e.to_string()),
                         formula
                     );
                 } else {

@@ -2,6 +2,7 @@
 
 use super::WorkbookReader;
 use super::workbook::{Cell, CellValue, ExternalWorkbook, Sheet};
+use crate::violation::ExcelError;
 use anyhow::Result;
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -1475,7 +1476,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             // Use text content if we have it and no other value
                             if !text_content.is_empty() {
                                 if is_error_cell {
-                                    value = CellValue::Error(Arc::from(text_content.as_str()));
+                                    value = CellValue::Error(
+                                        ExcelError::from_cell_str(&text_content)
+                                            .unwrap_or(ExcelError::Value),
+                                    );
                                     has_value = true;
                                 } else if !has_value {
                                     // Only use text:p content if we don't have a value from attributes

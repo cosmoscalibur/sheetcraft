@@ -15,8 +15,8 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **ERR101** (Broken Defined Name) | `book::named_ranges` | `RefersTo: =#REF!` | - | ✅ | ✅ | Detects named ranges pointing to invalid or deleted cell regions. |
-| **ERR102** (Excel Error) | `cell::value` | `#DIV/0!`, `#REF!` | - | ✅ | ❌ | Identifies cells containing raw Excel calculation error codes. |
-| **ERR103** (Reference to Error) | `cell::formula` | `=A1` (A1 is error) | `!ERR102` | ❌ | ❌ | Flags formulas referencing cells that currently store an error. |
+| **ERR102** (Excel Error) | `cell::value` | `#DIV/0!`, `#REF!` | `!CALC202; !ERR103` | ✅ | ✅ | Identifies cells containing raw Excel calculation error codes. |
+| **ERR103** (Reference to Error) | `cell::formula` | `=A1` (A1 is error) | `ERR102, !CALC202` | ✅ | ✅ | Flags formulas referencing cells that currently store an error. |
 
 ## 2. Unreliable Calculations (CALC2xx)
 

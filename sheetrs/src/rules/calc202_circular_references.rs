@@ -216,6 +216,8 @@ impl WalkerRule for CircularReferenceRule {
             if !is_duplicate {
                 for cell in &cycle {
                     reported_cells.insert(*cell);
+                    // Expose circular cells for ERR102/ERR103 dominance logic
+                    ctx.circular_cells.insert(*cell);
                 }
 
                 // Report on the first cell

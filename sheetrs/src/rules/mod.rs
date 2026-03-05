@@ -87,7 +87,7 @@ pub mod file1003_date_system_1904;
 pub mod vba1101_has_macros;
 
 use crate::reader::{Cell, Sheet, Workbook};
-use crate::violation::{RuleId, Violation};
+use crate::violation::{ExcelError, RuleId, Violation};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -103,6 +103,10 @@ pub struct LinterContext {
     pub referenced_sheets: HashSet<u16>,
     /// Cell dependency graph for circular reference detection
     pub cell_dependencies: CellDependencyMap,
+    /// Error cells found during walk: location → error type (populated by err102).
+    pub error_cells: HashMap<(u16, u32, u32), ExcelError>,
+    /// Cells on a circular reference path (populated by calc202 `on_workbook_end`).
+    pub circular_cells: HashSet<(u16, u32, u32)>,
 }
 
 /// Trait for optimized single-pass walker rules

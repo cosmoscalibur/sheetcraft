@@ -9,6 +9,7 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use super::{Cell, CellValue, Sheet, WorkbookReader};
+use crate::violation::ExcelError;
 
 /// Resolve sheet name to its XML path in the XLSX archive
 pub fn get_xlsx_sheet_path(
@@ -1192,7 +1193,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
         if looks_like_array && err == "#VALUE!" {
             // Array formula — keep value as-is (already set), formula will be set later
         } else {
-            value = CellValue::Error(Arc::from(err.as_str()));
+            value = CellValue::Error(ExcelError::from_cell_str(&err).unwrap_or(ExcelError::Value));
         }
     }
 

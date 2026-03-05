@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
+use crate::violation::ExcelError;
+
 /// Represents an external workbook reference
 #[derive(Debug, Clone)]
 pub struct ExternalWorkbook {
@@ -201,8 +203,8 @@ pub enum CellValue {
     Text(Arc<str>),
     /// Boolean value
     Boolean(bool),
-    /// Error value (e.g., "#REF!", "#DIV/0!", "#N/A")
-    Error(Arc<str>),
+    /// Error value (e.g., `#REF!`, `#DIV/0!`, `#N/A`)
+    Error(ExcelError),
 }
 
 impl CellValue {
@@ -216,10 +218,10 @@ impl CellValue {
         matches!(self, CellValue::Empty)
     }
 
-    /// Get the error text if this is an error cell.
-    pub fn as_error(&self) -> Option<&str> {
+    /// Get the error type if this is an error cell.
+    pub fn as_error(&self) -> Option<ExcelError> {
         match self {
-            CellValue::Error(e) => Some(e),
+            CellValue::Error(e) => Some(*e),
             _ => None,
         }
     }
