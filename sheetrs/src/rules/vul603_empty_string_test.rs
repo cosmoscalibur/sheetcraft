@@ -2,13 +2,14 @@
 //!
 //! Description: Recommends using ISBLANK() instead of checking for "" in formulas.
 
+use super::helpers::{bounding_box, find_contiguous_ranges};
 use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::reader::{Cell, Sheet};
 use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
 use regex::Regex;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Per-sheet cell collection: sheet_index → Vec<(row, col)>.
@@ -123,55 +124,6 @@ impl WalkerRule for EmptyStringTestRule {
 
         violations
     }
-}
-
-/// BFS contiguous cell grouping.
-fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
-    let mut visited: HashSet<(u32, u32)> = HashSet::new();
-    let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
-
-    for &cell in cells {
-        if visited.contains(&cell) {
-            continue;
-        }
-
-        let mut range = Vec::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(cell);
-        visited.insert(cell);
-
-        while let Some((row, col)) = queue.pop_front() {
-            range.push((row, col));
-
-            let neighbors = [
-                (row.wrapping_sub(1), col),
-                (row + 1, col),
-                (row, col.wrapping_sub(1)),
-                (row, col + 1),
-            ];
-
-            for neighbor in neighbors {
-                if cell_set.contains(&neighbor) && !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    queue.push_back(neighbor);
-                }
-            }
-        }
-
-        ranges.push(range);
-    }
-
-    ranges
-}
-
-/// Compute bounding box for a set of cells.
-fn bounding_box(cells: &[(u32, u32)]) -> (u32, u32, u32, u32) {
-    let min_row = cells.iter().map(|(r, _)| *r).min().unwrap_or(0);
-    let min_col = cells.iter().map(|(_, c)| *c).min().unwrap_or(0);
-    let max_row = cells.iter().map(|(r, _)| *r).max().unwrap_or(0);
-    let max_col = cells.iter().map(|(_, c)| *c).max().unwrap_or(0);
-    (min_row, min_col, max_row, max_col)
 }
 
 #[cfg(test)]

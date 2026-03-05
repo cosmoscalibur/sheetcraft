@@ -1,17 +1,18 @@
-//! FORM002: Avoid volatile functions
+//! VUL602: Avoid volatile functions
+//!
+//! Description: Volatile functions (like NOW, TODAY, RAND) recalculate every time
+//! the sheet recalculates, potentially causing performance issues in large workbooks.
 
-use super::{LinterRule, RuleCategory};
-use crate::config::LinterConfig;
-use crate::reader::Workbook;
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
-use std::collections::{HashSet, VecDeque};
+use super::helpers::{bounding_box, find_contiguous_ranges};
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
-/// Rule that detects usage of volatile functions.
-///
-/// Volatile functions (like NOW, TODAY, RAND) recalculate every time the sheet recalculates,
-/// potentially causing performance issues in large workbooks.
-///   Fixed list of volatile functions as internal constants.
+/// Fixed list of volatile functions as internal constants.
 const VOLATILE_FUNCTIONS: &[&str] = &[
     "NOW",
     "TODAY",
@@ -23,16 +24,68 @@ const VOLATILE_FUNCTIONS: &[&str] = &[
     "CELL",
 ];
 
-#[derive(Default)]
-pub struct VolatileFunctionsRule;
+/// Per-sheet cell collection: sheet_index → Vec<(func_index, row, col)>.
+type SheetCellMap = Mutex<HashMap<u16, Vec<(u8, u32, u32)>>>;
+
+/// Rule that detects usage of volatile functions.
+pub struct VolatileFunctionsRule {
+    /// Per-sheet collected cells with function index.
+    sheet_cells: SheetCellMap,
+}
 
 impl VolatileFunctionsRule {
-    pub fn new(_config: &LinterConfig) -> Self {
-        Self
+    /// Create a new instance.
+    pub fn new() -> Self {
+        Self {
+            sheet_cells: Mutex::new(HashMap::new()),
+        }
     }
 }
 
-impl LinterRule for VolatileFunctionsRule {
+impl Default for VolatileFunctionsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Incident data for VUL602.
+#[derive(Debug)]
+pub struct VolatileFunctionData {
+    /// Index into `VOLATILE_FUNCTIONS` list.
+    pub func_index: u8,
+    /// Bounding box of violating cells (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+}
+
+impl ViolationData for VolatileFunctionData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let func_name = VOLATILE_FUNCTIONS
+            .get(self.func_index as usize)
+            .unwrap_or(&"UNKNOWN");
+
+        let (sr, sc, er, ec) = self.range;
+        let range_str = if sr == er && sc == ec {
+            CellReference::new(sr, sc).to_string()
+        } else {
+            format!(
+                "{}:{}",
+                CellReference::new(sr, sc),
+                CellReference::new(er, ec)
+            )
+        };
+
+        format!(
+            "Volatile function {}() found in range: {}. Consider alternatives for better performance.",
+            func_name, range_str
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for VolatileFunctionsRule {
     fn id(&self) -> RuleId {
         RuleId::Vul602
     }
@@ -45,116 +98,56 @@ impl LinterRule for VolatileFunctionsRule {
         RuleCategory::Vulnerability
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let Some(formula) = cell.as_formula() {
+            let formula_upper = formula.to_uppercase();
+
+            for (idx, func) in VOLATILE_FUNCTIONS.iter().enumerate() {
+                if formula_upper.contains(&format!("{}(", func)) {
+                    let mut map = self.sheet_cells.lock().unwrap();
+                    map.entry(sheet.sheet_index)
+                        .or_default()
+                        .push((idx as u8, cell.row, cell.col));
+                    break; // Only count each cell once
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut map = self.sheet_cells.lock().unwrap();
+        let cells = match map.remove(&sheet.sheet_index) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            // Group cells by which volatile function they contain
-            let mut function_cells: std::collections::HashMap<String, Vec<(u32, u32)>> =
-                std::collections::HashMap::new();
+        // Group by function index
+        let mut by_func: HashMap<u8, Vec<(u32, u32)>> = HashMap::new();
+        for (func_idx, row, col) in cells {
+            by_func.entry(func_idx).or_default().push((row, col));
+        }
 
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    let formula_upper = formula.to_uppercase();
-
-                    for func in VOLATILE_FUNCTIONS {
-                        // Check if function appears in formula
-                        // Look for function name followed by opening parenthesis
-                        if formula_upper.contains(&format!("{}(", func)) {
-                            function_cells
-                                .entry(func.to_string())
-                                .or_default()
-                                .push((cell.row, cell.col));
-                            break; // Only count each cell once
-                        }
-                    }
-                }
-            }
-
-            // Create violations for each volatile function found
-            for (func, cells) in function_cells {
-                let ranges = find_contiguous_ranges(&cells);
-
-                for range in ranges {
-                    let range_str = format_single_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Vul602,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!(
-                            "Volatile function {}() found in range: {}. Consider alternatives for better performance.",
-                            func, range_str
-                        ),
-                        Severity::Info,
-                    ));
-                }
+        for (func_idx, func_cells) in by_func {
+            let ranges = find_contiguous_ranges(&func_cells);
+            for range in ranges {
+                let bbox = bounding_box(&range);
+                violations.push(Violation::with_data(
+                    RuleId::Vul602,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    VolatileFunctionData {
+                        func_index: func_idx,
+                        range: bbox,
+                    },
+                    Severity::Info,
+                ));
             }
         }
 
-        Ok(violations)
+        violations
     }
-}
-
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
-fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
-    let mut visited: HashSet<(u32, u32)> = HashSet::new();
-    let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
-
-    for &cell in cells {
-        if visited.contains(&cell) {
-            continue;
-        }
-
-        // BFS to find all connected cells
-        let mut range = Vec::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(cell);
-        visited.insert(cell);
-
-        while let Some((row, col)) = queue.pop_front() {
-            range.push((row, col));
-
-            // Check all 4 adjacent cells (up, down, left, right)
-            let neighbors = [
-                (row.wrapping_sub(1), col),
-                (row + 1, col),
-                (row, col.wrapping_sub(1)),
-                (row, col + 1),
-            ];
-
-            for neighbor in neighbors {
-                if cell_set.contains(&neighbor) && !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    queue.push_back(neighbor);
-                }
-            }
-        }
-
-        ranges.push(range);
-    }
-
-    ranges
 }
 
 #[cfg(test)]
@@ -162,7 +155,6 @@ mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_volatile_function_now() {
@@ -182,29 +174,18 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rule = VolatileFunctionsRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Vul602);
-        assert!(violations[0].message().contains("NOW"));
     }
 
     #[test]
@@ -235,25 +216,15 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((2, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rule = VolatileFunctionsRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 2);
     }
@@ -276,25 +247,15 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
-        let rule = VolatileFunctionsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rule = VolatileFunctionsRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
     }

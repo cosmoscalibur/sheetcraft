@@ -71,7 +71,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **VUL601** (Duplicate Formula) | `cell::formula (inter)` | Identical copies | - | ✅ | ✅ | Identifies logical redundancy repeat across sheets or ranges. |
-| **VUL602** (Volatile Function) | `cell::formula` | `TODAY()`, `RAND()` | - | ✅ | ❌ | Detects non-deterministic functions causing frequent recalculations. |
+| **VUL602** (Volatile Function) | `cell::formula` | `TODAY()`, `RAND()` | - | ✅ | ✅ | Detects non-deterministic functions causing frequent recalculations. |
 | **VUL603** (Empty String Test) | `cell::formula` | `IF(A1="", ...)` | - | ✅ | ✅ | Recommends `ISBLANK` over string literal tests for cell status. |
 | **VUL604** (Error Prone Functions) | `cell::formula` | `VLOOKUP`, `HLOOKUP` | - | 🚧 | Flags lookup functions missing exact-match flag or using brittle refs. |
 | **VUL605** (Legacy Array) | `cell::formula` | `{=SUM(...)}` | - | ❌ | Detects antiquated CSE formulas that may fail in modern versions. |

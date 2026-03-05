@@ -197,10 +197,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(cpx508_many_references::ManyReferencesRule),
         Box::new(cpx509_long_formula::LongFormulaRule::new(config)),
         // Vulnerable Formulas (6xx)
-        // vul601, vul603 moved to walker
-        Box::new(vul602_volatile_functions::VolatileFunctionsRule::new(
-            config,
-        )),
+        // vul601, vul602, vul603 moved to walker
         Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
             config,
         )),
@@ -263,6 +260,7 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         ),
         // Vulnerability (6xx)
         Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
+        Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
         Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
         // Reference (3xx)
         Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
@@ -327,6 +325,7 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
             ),
         ),
         RuleId::Vul601 => Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
+        RuleId::Vul602 => Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
         RuleId::Vul603 => Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
         RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
         RuleId::Data703 => Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
