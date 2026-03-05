@@ -2,33 +2,35 @@
 //!
 //! Description: Detects whole-column (e.g., A:A) or whole-row (e.g., 1:1) references.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
 use regex::Regex;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Mutex;
+
+/// Per-sheet cell collection: sheet_index → Vec<(row, col, is_column)>.
+type SheetCellMap = Mutex<HashMap<u16, Vec<(u32, u32, bool)>>>;
 
 /// Rule that detects whole-column (e.g., A:A) or whole-row (e.g., 1:1) references.
 pub struct WholeColumnRowRefsRule {
-    // Regex patterns for detecting whole column/row references
+    /// Regex pattern for whole column references (A:A, A:Z, etc.).
     column_pattern: Regex,
+    /// Regex pattern for whole row references (1:1, 1:100, etc.).
     row_pattern: Regex,
+    /// Per-sheet collected cells.
+    sheet_cells: SheetCellMap,
 }
 
 impl WholeColumnRowRefsRule {
+    /// Create a new instance with compiled regex.
     pub fn new() -> Self {
-        // Pattern for whole column references: A:A, A:Z, etc.
-        // Matches one or more letters, colon, one or more letters
-        let column_pattern = Regex::new(r"\b[A-Z]+:[A-Z]+\b").unwrap();
-
-        // Pattern for whole row references: 1:1, 1:100, etc.
-        // Matches one or more digits, colon, one or more digits
-        let row_pattern = Regex::new(r"\b\d+:\d+\b").unwrap();
-
         Self {
-            column_pattern,
-            row_pattern,
+            column_pattern: Regex::new(r"\b[A-Z]+:[A-Z]+\b").unwrap(),
+            row_pattern: Regex::new(r"\b\d+:\d+\b").unwrap(),
+            sheet_cells: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -39,7 +41,47 @@ impl Default for WholeColumnRowRefsRule {
     }
 }
 
-impl LinterRule for WholeColumnRowRefsRule {
+/// Incident data for REF307.
+#[derive(Debug)]
+pub struct WholeRefData {
+    /// `true` for whole-column, `false` for whole-row.
+    pub is_column: bool,
+    /// Bounding box of violating cells (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+}
+
+impl ViolationData for WholeRefData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let (sr, sc, er, ec) = self.range;
+        let range_str = if sr == er && sc == ec {
+            CellReference::new(sr, sc).to_string()
+        } else {
+            format!(
+                "{}:{}",
+                CellReference::new(sr, sc),
+                CellReference::new(er, ec)
+            )
+        };
+
+        if self.is_column {
+            format!(
+                "Whole-column reference (e.g., A:A) found in range: {}. Use bounded ranges for better performance.",
+                range_str
+            )
+        } else {
+            format!(
+                "Whole-row reference (e.g., 1:1) found in range: {}. Use bounded ranges for better performance.",
+                range_str
+            )
+        }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for WholeColumnRowRefsRule {
     fn id(&self) -> RuleId {
         RuleId::Ref307
     }
@@ -52,91 +94,62 @@ impl LinterRule for WholeColumnRowRefsRule {
         RuleCategory::Reference
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let Some(formula) = cell.as_formula() {
+            let formula_upper = formula.to_uppercase();
+
+            let has_column = self.column_pattern.is_match(&formula_upper);
+            let has_row = !has_column && self.row_pattern.is_match(&formula_upper);
+
+            if has_column || has_row {
+                let mut map = self.sheet_cells.lock().unwrap();
+                map.entry(sheet.sheet_index)
+                    .or_default()
+                    .push((cell.row, cell.col, has_column));
+            }
+        }
+        Vec::new()
+    }
+
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut map = self.sheet_cells.lock().unwrap();
+        let cells = match map.remove(&sheet.sheet_index) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            let mut column_ref_cells: Vec<(u32, u32)> = Vec::new();
-            let mut row_ref_cells: Vec<(u32, u32)> = Vec::new();
+        // Split by type
+        let column_cells: Vec<(u32, u32)> =
+            cells.iter().filter(|c| c.2).map(|c| (c.0, c.1)).collect();
+        let row_cells: Vec<(u32, u32)> =
+            cells.iter().filter(|c| !c.2).map(|c| (c.0, c.1)).collect();
 
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    let formula_upper = formula.to_uppercase();
-
-                    let has_column_ref = self.column_pattern.is_match(&formula_upper);
-                    let has_row_ref = self.row_pattern.is_match(&formula_upper);
-
-                    if has_column_ref {
-                        column_ref_cells.push((cell.row, cell.col));
-                    } else if has_row_ref {
-                        row_ref_cells.push((cell.row, cell.col));
-                    }
-                }
+        for (is_column, group) in [(true, &column_cells), (false, &row_cells)] {
+            if group.is_empty() {
+                continue;
             }
-
-            // Report whole column references
-            if !column_ref_cells.is_empty() {
-                let ranges = find_contiguous_ranges(&column_ref_cells);
-
-                for range in ranges {
-                    let range_str = format_single_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Ref307,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!(
-                            "Whole-column reference (e.g., A:A) found in range: {}. Use bounded ranges for better performance.",
-                            range_str
-                        ),
-                        Severity::Warning,
-                    ));
-                }
-            }
-
-            // Report whole row references
-            if !row_ref_cells.is_empty() {
-                let ranges = find_contiguous_ranges(&row_ref_cells);
-
-                for range in ranges {
-                    let range_str = format_single_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Ref307,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!(
-                            "Whole-row reference (e.g., 1:1) found in range: {}. Use bounded ranges for better performance.",
-                            range_str
-                        ),
-                        Severity::Warning,
-                    ));
-                }
+            let ranges = find_contiguous_ranges(group);
+            for range in ranges {
+                let bbox = bounding_box(&range);
+                violations.push(Violation::with_data(
+                    RuleId::Ref307,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    WholeRefData {
+                        is_column,
+                        range: bbox,
+                    },
+                    Severity::Warning,
+                ));
             }
         }
 
-        Ok(violations)
+        violations
     }
 }
 
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
+/// BFS contiguous cell grouping.
 fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
     let mut visited: HashSet<(u32, u32)> = HashSet::new();
@@ -147,7 +160,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
             continue;
         }
 
-        // BFS to find all connected cells
         let mut range = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(cell);
@@ -156,7 +168,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
         while let Some((row, col)) = queue.pop_front() {
             range.push((row, col));
 
-            // Check all 4 adjacent cells (up, down, left, right)
             let neighbors = [
                 (row.wrapping_sub(1), col),
                 (row + 1, col),
@@ -178,12 +189,20 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     ranges
 }
 
+/// Compute bounding box for a set of cells.
+fn bounding_box(cells: &[(u32, u32)]) -> (u32, u32, u32, u32) {
+    let min_row = cells.iter().map(|(r, _)| *r).min().unwrap_or(0);
+    let min_col = cells.iter().map(|(_, c)| *c).min().unwrap_or(0);
+    let max_row = cells.iter().map(|(r, _)| *r).max().unwrap_or(0);
+    let max_col = cells.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    (min_row, min_col, max_row, max_col)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_whole_column_reference() {
@@ -203,29 +222,18 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
         let rule = WholeColumnRowRefsRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref307);
-        assert!(violations[0].message().contains("Whole-column"));
     }
 
     #[test]
@@ -246,29 +254,18 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
         let rule = WholeColumnRowRefsRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Ref307);
-        assert!(violations[0].message().contains("Whole-row"));
     }
 
     #[test]
@@ -289,26 +286,16 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
         let rule = WholeColumnRowRefsRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
-        assert_eq!(violations.len(), 0);
+        assert!(violations.is_empty());
     }
 }

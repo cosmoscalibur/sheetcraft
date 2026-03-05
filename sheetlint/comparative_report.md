@@ -38,7 +38,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **REF304** (Large Used Range) | `sheet::layout` | UsedRange >> Data | `!REF303` | ✅ | ❌ | Identifies mismatched UsedRange dimensions vs real data bounds. |
 | **REF305** (Blank Row or Column) | `sheet::layout` | Data -> 100 empty rows| `!REF304` | ✅ | ❌ | Detects excessive spacing. Only triggers if Large Used Range is not meta-flagged. |
 | **REF306** (Unused Sheet) | `sheet::ref (inter)` | No cross-sheet refs | `!REF303` | ✅ | ✅ | Identifies worksheets not referenced anywhere in the workbook. |
-| **REF307** (Whole Column or Row Reference) | `cell::formula` | `=SUM(A:A)` | - | ✅ | ❌ | Flags formulas referencing entire axes, increasing calculation cost. |
+| **REF307** (Whole Column or Row Reference) | `cell::formula` | `=SUM(A:A)` | - | ✅ | ✅ | Flags formulas referencing entire axes, increasing calculation cost. |
 | **REF308** (Current Sheet Reference) | `cell::formula` | `=Sheet1!A1` in S1 | - | ❌ | ❌ | Identifies redundant worksheet prefixes in local cell references. |
 | **REF309** (Reference to Empty Cell) | `cell::formula (inter)`| `=A1` (A1 is blank) | `!REF303` | ❌ | ❌ | Identifies formula dependencies that point to null/blank cells. |
 | **REF310** (Longer Cell Reference Expected) | `cell::formula` | `A1:A5` + data A6 | - | ❌ | ❌ | Flags small range references adjacent to similar data types. |
@@ -58,7 +58,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **CPX501** (Sheet Counts) | `book::metadata` | > 50 Sheets | - | ✅ | ✅ | Detects architectural bloat and navigation difficulty. |
 | **CPX502** (Merged Cells) | `sheet::layout` | Merged A1:B2 | - | ✅ | ✅ | Identifies merged cells which complicate data manipulation. |
-| **CPX503** (Excessive Cond Format) | `sheet::style` | > 25 rules | - | ✅ | ❌ | Detects high volume of conditional rules slowing UI interactions. |
+| **CPX503** (Excessive Cond Format) | `sheet::style` | > 25 rules | - | ✅ | ✅ | Detects high volume of conditional rules slowing UI interactions. |
 | **CPX504** (Deep IF Nesting) | `cell::formula` | 4 nested IFs | - | ✅ | ❌ | Specifically targets functional depth within conditional IF logic. |
 | **CPX505** (Many Nested Functions) | `cell::formula` | 7 level nesting | `!CPX504` | ✅ | ❌ | Identifies deep nesting. Only triggers if Deep IF threshold is not met. |
 | **CPX506** (Many Operations) | `cell::formula` | `A1+A2*A3...` (>8) | `!CPX505` | ❌ | ❌ | Counts arithmetic/logical operators within a single formula. |
@@ -70,9 +70,9 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **VUL601** (Duplicate Formula) | `cell::formula (inter)` | Identical copies | - | ✅ | ❌ | Identifies logical redundancy repeat across sheets or ranges. |
-| **VUL602** (Volatile Function) | `cell::formula` | `TODAY()`, `RAND()` | - | ✅ | Detects non-deterministic functions causing frequent recalculations. |
-| **VUL603** (Empty String Test) | `cell::formula` | `IF(A1="", ...)` | - | ✅ | Recommends `ISBLANK` over string literal tests for cell status. |
+| **VUL601** (Duplicate Formula) | `cell::formula (inter)` | Identical copies | - | ✅ | ✅ | Identifies logical redundancy repeat across sheets or ranges. |
+| **VUL602** (Volatile Function) | `cell::formula` | `TODAY()`, `RAND()` | - | ✅ | ❌ | Detects non-deterministic functions causing frequent recalculations. |
+| **VUL603** (Empty String Test) | `cell::formula` | `IF(A1="", ...)` | - | ✅ | ✅ | Recommends `ISBLANK` over string literal tests for cell status. |
 | **VUL604** (Error Prone Functions) | `cell::formula` | `VLOOKUP`, `HLOOKUP` | - | 🚧 | Flags lookup functions missing exact-match flag or using brittle refs. |
 | **VUL605** (Legacy Array) | `cell::formula` | `{=SUM(...)}` | - | ❌ | Detects antiquated CSE formulas that may fail in modern versions. |
 | **VUL606** (Deprecated Func) | `cell::formula` | `CONCATENATE` | - | ❌ | Identifies functions superseded by modern alternatives. |
@@ -83,9 +83,9 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **DATA701** (Generic Sheet Name) | `sheet::metadata` | "Sheet1" | - | ✅ | ✅ | Identifies failure to use descriptive worksheet naming. |
-| **DATA702** (Number Stored as Text) | `cell::content` | Num val in Text fmt | - | ✅ | ❌ | Detects mismatch between cell conceptual type and applied format. |
-| **DATA703** (Inconsistent Date Format) | `cell::content` | Date val in Num fmt | - | ✅ | ❌ | Detects formatting drift in cells containing temporal data. |
-| **DATA704** (Long Text Cell) | `cell::value` | > 32k chars | - | ✅ | ❌ | Flags cells storing excessively large strings for the grid format. |
+| **DATA702** (Number Stored as Text) | `cell::content` | Num val in Text fmt | - | ✅ | ✅ | Detects mismatch between cell conceptual type and applied format. |
+| **DATA703** (Inconsistent Date Format) | `cell::content` | Date val in Num fmt | - | ✅ | ✅ | Detects formatting drift in cells containing temporal data. |
+| **DATA704** (Long Text Cell) | `cell::value` | > 32k chars | - | ✅ | ✅ | Flags cells storing excessively large strings for the grid format. |
 | **DATA705** (Unnecessary Space) | `cell::value" | "" value "" ` | - | ❌ | ❌ | Detects invisible white-space padding at the start/end of values. |
 | **DATA706** (Numeric Text Calculation)| `cell::formula" | "=""10"" + 1` | - | ❌ | ❌ | Identifies mathematical operations involving stringed numbers. |
 | **DATA707** (Data Validation Rule not Followed) | `cell::value` | Invalid input | - | ❌ | ❌ | Flags data points violating defined spreadsheet constraints. |
@@ -108,7 +108,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **HID901** (Hidden Defined Name) | `book::named_ranges` | `visible: false` | - | ❌ | ❌ | Detects invisible named ranges used for technical storage. |
 | **HID902** (Very Hidden Worksheet) | `sheet::visibility` | `hidden` | - | ❌ | ❌ | Specifically targets Excel "Very Hidden" sheets (vburied). |
 | **HID903** (Hidden Worksheet) | `sheet::visibility` | `hidden` / `vhidden` | - | ✅ | ✅ | Detects worksheets manually or programmatically hidden from view. |
-| **HID904** (Hidden Rows or Columns) | `sheet::layout` | `row::hidden` | - | ✅ | ❌ | Identifies rows or columns manually collapsed into invisibility. |
+| **HID904** (Hidden Rows or Columns) | `sheet::layout` | `row::hidden` | - | ✅ | ✅ | Identifies rows or columns manually collapsed into invisibility. |
 | **HID905** (Hidden Formula) | `cell::style` | `formula::hidden` | - | ❌ | ❌ | Flags cells with logic hidden from the formula bar. |
 | **HID906** (Invisible Cell Value) | `cell::style` | Font color = BG | - | ❌ | ❌ | Detects data masked by color matches or formatting tricks. |
 

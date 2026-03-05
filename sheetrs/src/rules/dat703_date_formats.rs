@@ -2,18 +2,24 @@
 //!
 //! Description: Identifies date values formatted as integers or other drift from standard temporal formats.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::{CellValue, Workbook};
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
+use crate::reader::{Cell, CellValue, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::sync::Arc;
 
 /// Rule that detects inconsistent date formats within contiguous ranges.
 pub struct InconsistentDateFormatRule {
+    /// Default date format from config.
     default_date_format: String,
+    /// Rule configuration.
     config: LinterConfig,
 }
 
 impl InconsistentDateFormatRule {
+    /// Create a new instance with configuration.
     pub fn new(config: &LinterConfig) -> Self {
         let default_date_format = config
             .get_param_str("date_format", None)
@@ -26,31 +32,42 @@ impl InconsistentDateFormatRule {
         }
     }
 
-    /// Check if a format string represents a date
+    /// Check if a format string represents a date.
     fn is_date_format(fmt: &str) -> bool {
-        // Simple heuristic: contains date characters
-        // Exclude simple number formats
         let lower = fmt.to_lowercase();
-
-        // Exclude "Red", "Blue" etc colors
         let lower_no_color = lower.replace("[red]", "").replace("[blue]", "");
 
-        // Check for d, m, y. Note 'm' can be minutes, but usually in context of time.
-        // Should ANY date/time that doesn't match the specific format be flagged?
-        // Or only Dates?
-        // User request: "Detect if date not formatted as a specific format setup"
-        // So if it IS a date, it must match.
-        // Excel date formats: d, m, y.
         (lower_no_color.contains('d')
             || lower_no_color.contains('y')
             || (lower_no_color.contains('m')
                 && !lower_no_color.contains('0')
                 && !lower_no_color.contains('#')))
-            && !lower_no_color.contains("general") // General is not a date
+            && !lower_no_color.contains("general")
     }
 }
 
-impl LinterRule for InconsistentDateFormatRule {
+/// Incident data for DATA703.
+#[derive(Debug)]
+pub struct DateFormatData {
+    /// The cell's `num_fmt`, shared via `Arc<str>`.
+    pub num_fmt: Arc<str>,
+}
+
+impl ViolationData for DateFormatData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let normalized = self.num_fmt.replace('\\', "");
+        format!(
+            "Date format '{}' does not match required format",
+            normalized
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for InconsistentDateFormatRule {
     fn id(&self) -> RuleId {
         RuleId::Data703
     }
@@ -63,63 +80,45 @@ impl LinterRule for InconsistentDateFormatRule {
         RuleCategory::Data
     }
 
-    fn check(&self, workbook: &Workbook) -> anyhow::Result<Vec<Violation>> {
-        let mut violations = Vec::new();
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let is_candidate = matches!(cell.value, CellValue::Number(_) | CellValue::Text(_));
 
-        for sheet in &workbook.sheets {
-            // Get sheet-specific format if exists
+        if is_candidate && let Some(fmt) = &cell.num_fmt {
+            let normalized_fmt = fmt.replace('\\', "");
             let required_format = self
                 .config
                 .get_param_str("date_format", Some(&sheet.name))
                 .unwrap_or(&self.default_date_format);
 
-            for ((row, col), cell) in &sheet.cells {
-                // Only date cells are relevant.
-                // In Excel, dates are numbers with a date format.
-                // Only date cells are relevant.
-                // In Excel, dates are numbers. In ODS, they might be stored as text (ISO strings) with a style.
-                // Formulas can also result in dates.
-                let is_candidate = matches!(cell.value, CellValue::Number(_) | CellValue::Text(_));
-
-                if is_candidate && let Some(fmt) = &cell.num_fmt {
-                    // Normalize format: remove escape backslashes common in XLSX (e.g. "mm\-dd\-yyyy" -> "mm-dd-yyyy")
-                    let normalized_fmt = fmt.replace('\\', "");
-
-                    // Check if it's a date format (using original check, but on normalized or raw? usually safe to check raw)
-                    if Self::is_date_format(&normalized_fmt)
-                        && normalized_fmt != required_format.replace('\\', "")
-                    {
-                        violations.push(Violation::new(
-                            RuleId::Data703,
-                            ViolationScope::Cell(
-                                sheet.sheet_index,
-                                crate::violation::CellReference {
-                                    row: *row,
-                                    col: *col,
-                                },
-                            ),
-                            format!(
-                                "Date format '{}' does not match required format '{}'",
-                                normalized_fmt, required_format
-                            ),
-                            Severity::Warning,
-                        ));
-                    }
-                }
+            if Self::is_date_format(&normalized_fmt)
+                && normalized_fmt != required_format.replace('\\', "")
+            {
+                return vec![Violation::with_data(
+                    RuleId::Data703,
+                    ViolationScope::Cell(
+                        sheet.sheet_index,
+                        CellReference {
+                            row: cell.row,
+                            col: cell.col,
+                        },
+                    ),
+                    DateFormatData {
+                        num_fmt: Arc::clone(fmt),
+                    },
+                    Severity::Warning,
+                )];
             }
         }
 
-        Ok(violations)
+        Vec::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::{Cell, Sheet};
+    use crate::reader::Sheet;
     use std::collections::HashMap;
-    use std::path::PathBuf;
-    use std::sync::Arc;
 
     #[test]
     fn test_date_format_check() {
@@ -162,32 +161,19 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((1, 3)),
-            hidden_columns: vec![],
-            hidden_rows: vec![],
-            merged_cells: vec![],
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-            sheet_path: None,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
         let config = LinterConfig::default();
-        // Set default to mm/dd/yyyy
-        // LinterConfig default uses empty hashmaps, so "mm/dd/yyyy" logic inside rule handles it.
-        // Params can be injected to test override.
-
         let rule = InconsistentDateFormatRule::new(&config);
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+
+        let mut violations = Vec::new();
+        for cell in sheet.all_cells() {
+            violations.extend(rule.on_cell(&sheet, cell, &mut ctx));
+        }
 
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message().contains("dd-mm-yyyy"));
+        assert_eq!(violations[0].rule_id, RuleId::Data703);
     }
 }

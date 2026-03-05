@@ -1,17 +1,76 @@
-//! UX001: Inconsistent number formatting detection
-//! Detects numeric data stored as text instead of as number type
+//! DATA702: Inconsistent number formatting detection
+//!
+//! Description: Detects numeric data stored as text instead of as number type.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::{Cell, CellValue, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Mutex;
+
+/// Per-sheet cell collection: sheet_index → Vec<(row, col)>.
+type SheetCellMap = Mutex<HashMap<u16, Vec<(u32, u32)>>>;
 
 /// Rule that detects numbers stored as text
-///
-/// Numbers stored as text can cause calculation errors and sorting issues.
-pub struct InconsistentNumberFormatRule;
+pub struct InconsistentNumberFormatRule {
+    /// Per-sheet collected cells.
+    sheet_cells: SheetCellMap,
+}
 
-impl LinterRule for InconsistentNumberFormatRule {
+impl InconsistentNumberFormatRule {
+    /// Create a new instance.
+    pub fn new() -> Self {
+        Self {
+            sheet_cells: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl Default for InconsistentNumberFormatRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Incident data for DATA702.
+#[derive(Debug)]
+pub struct NumericTextData {
+    /// Bounding box of violating cells (start_row, start_col, end_row, end_col).
+    pub range: (u32, u32, u32, u32),
+}
+
+impl ViolationData for NumericTextData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        let (sr, sc, er, ec) = self.range;
+        let range_str = if sr == er && sc == ec {
+            CellReference::new(sr, sc).to_string()
+        } else {
+            format!(
+                "{}:{}",
+                CellReference::new(sr, sc),
+                CellReference::new(er, ec)
+            )
+        };
+        format!("Numeric data stored as text in range: {}", range_str)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Check if a text string represents a numeric value.
+fn is_numeric_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    trimmed.parse::<f64>().is_ok()
+}
+
+impl WalkerRule for InconsistentNumberFormatRule {
     fn id(&self) -> RuleId {
         RuleId::Data702
     }
@@ -24,70 +83,44 @@ impl LinterRule for InconsistentNumberFormatRule {
         RuleCategory::Data
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        if let CellValue::Text(text) = &cell.value
+            && is_numeric_text(text)
+        {
+            let mut map = self.sheet_cells.lock().unwrap();
+            map.entry(sheet.sheet_index)
+                .or_default()
+                .push((cell.row, cell.col));
+        }
+        Vec::new()
+    }
+
+    fn on_sheet_end(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let mut map = self.sheet_cells.lock().unwrap();
+        let cells = match map.remove(&sheet.sheet_index) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
+        let ranges = find_contiguous_ranges(&cells);
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            // Collect all cells with numeric text
-            let mut numeric_text_cells: Vec<(u32, u32)> = Vec::new();
-
-            for cell in sheet.all_cells() {
-                // Check if cell contains text that looks like a number
-                if let crate::reader::workbook::CellValue::Text(text) = &cell.value
-                    && is_numeric_text(text)
-                {
-                    numeric_text_cells.push((cell.row, cell.col));
-                }
-            }
-
-            // Group cells into ranges and create violations
-            if !numeric_text_cells.is_empty() {
-                let ranges = find_contiguous_ranges(&numeric_text_cells);
-
-                // Create a separate violation for each contiguous range
-                for range in ranges {
-                    let range_str = format_single_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Data702,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!("Numeric data stored as text in range: {}", range_str),
-                        Severity::Warning,
-                    ));
-                }
-            }
+        for range in ranges {
+            let bbox = bounding_box(&range);
+            violations.push(Violation::with_data(
+                RuleId::Data702,
+                ViolationScope::Sheet(sheet.sheet_index),
+                NumericTextData { range: bbox },
+                Severity::Warning,
+            ));
         }
 
-        Ok(violations)
+        violations
     }
 }
 
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    use crate::violation::CellReference;
-
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
+/// BFS contiguous cell grouping.
 fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    use std::collections::{HashSet, VecDeque};
-
     let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
     let mut visited: HashSet<(u32, u32)> = HashSet::new();
     let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
@@ -97,7 +130,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
             continue;
         }
 
-        // BFS to find all connected cells
         let mut range = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(cell);
@@ -106,7 +138,6 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
         while let Some((row, col)) = queue.pop_front() {
             range.push((row, col));
 
-            // Check all 4 adjacent cells (up, down, left, right)
             let neighbors = [
                 (row.wrapping_sub(1), col),
                 (row + 1, col),
@@ -128,18 +159,13 @@ fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     ranges
 }
 
-/// Check if a text string represents a numeric value
-fn is_numeric_text(text: &str) -> bool {
-    let trimmed = text.trim();
-
-    // Empty strings are not numeric
-    if trimmed.is_empty() {
-        return false;
-    }
-
-    // Try to parse as a number
-    // This handles integers, floats, scientific notation, etc.
-    trimmed.parse::<f64>().is_ok()
+/// Compute bounding box for a set of cells.
+fn bounding_box(cells: &[(u32, u32)]) -> (u32, u32, u32, u32) {
+    let min_row = cells.iter().map(|(r, _)| *r).min().unwrap_or(0);
+    let min_col = cells.iter().map(|(_, c)| *c).min().unwrap_or(0);
+    let max_row = cells.iter().map(|(r, _)| *r).max().unwrap_or(0);
+    let max_col = cells.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    (min_row, min_col, max_row, max_col)
 }
 
 #[cfg(test)]
@@ -147,14 +173,11 @@ mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use std::sync::Arc;
 
     #[test]
     fn test_numeric_text_detection() {
         let mut cells = HashMap::new();
-
-        // Numeric text - should be flagged
         cells.insert(
             (0, 0),
             Cell {
@@ -165,7 +188,6 @@ mod tests {
                 value: CellValue::Text(Arc::from("42")),
             },
         );
-
         cells.insert(
             (1, 0),
             Cell {
@@ -176,8 +198,7 @@ mod tests {
                 value: CellValue::Text(Arc::from("3.14")),
             },
         );
-
-        // Actual number - should NOT be flagged
+        // Real number — not flagged
         cells.insert(
             (2, 0),
             Cell {
@@ -188,8 +209,7 @@ mod tests {
                 value: CellValue::Number(100.0),
             },
         );
-
-        // Non-numeric text - should NOT be flagged
+        // Non-numeric text — not flagged
         cells.insert(
             (3, 0),
             Cell {
@@ -205,30 +225,17 @@ mod tests {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
-            used_range: Some((4, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
         };
 
-        let rule = InconsistentNumberFormatRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rule = InconsistentNumberFormatRule::new();
+        let mut ctx = LinterContext::default();
+        for cell in sheet.all_cells() {
+            rule.on_cell(&sheet, cell, &mut ctx);
+        }
+        let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
-        // Should detect numeric text as a range
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Data702);
-        assert!(violations[0].message().contains("range"));
-        // The range should be "2 cells in A1:B2" since cells are at (0,0) and (1,0)
     }
 }

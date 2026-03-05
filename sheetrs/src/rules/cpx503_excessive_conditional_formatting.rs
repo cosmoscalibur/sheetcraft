@@ -2,13 +2,11 @@
 //!
 //! Description: High counts of conditional formatting rules can degrade workbook performance.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use crate::reader::Sheet;
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
-#[derive(Default)]
 /// Rule that detects excessive conditional formatting rules
 pub struct ExcessiveConditionalFormattingRule {
     config: LinterConfig,
@@ -23,7 +21,34 @@ impl ExcessiveConditionalFormattingRule {
     }
 }
 
-impl LinterRule for ExcessiveConditionalFormattingRule {
+/// Incident data for CPX503.
+#[derive(Debug)]
+pub struct ExcessiveConditionalFormattingData {
+    /// Number of conditional formatting rules found.
+    pub count: usize,
+    /// Affected ranges as raw strings.
+    pub ranges: Vec<String>,
+}
+
+impl ViolationData for ExcessiveConditionalFormattingData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        if self.ranges.is_empty() {
+            format!("Sheet has {} conditional formatting rules", self.count)
+        } else {
+            format!(
+                "Sheet has {} conditional formatting rules. Ranges: {}",
+                self.count,
+                self.ranges.join(", ")
+            )
+        }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for ExcessiveConditionalFormattingRule {
     fn id(&self) -> RuleId {
         RuleId::Cpx503
     }
@@ -36,40 +61,31 @@ impl LinterRule for ExcessiveConditionalFormattingRule {
         RuleCategory::Complexity
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
+    fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let threshold = self
+            .config
+            .get_param_int("max_conditional_formatting", Some(&sheet.name))
+            .unwrap_or(5) as u32;
 
-        for sheet in &workbook.sheets {
-            let threshold = self
-                .config
-                .get_param_int("max_conditional_formatting", Some(&sheet.name))
-                .unwrap_or(5) as u32;
+        let cf_count = sheet.conditional_formatting_count;
 
-            let cf_count = sheet.conditional_formatting_count;
+        if cf_count > threshold as usize {
+            let mut ranges: Vec<String> = sheet.conditional_formatting_ranges.clone();
+            ranges.sort();
+            ranges.dedup();
 
-            if cf_count > threshold as usize {
-                let ranges_str = if !sheet.conditional_formatting_ranges.is_empty() {
-                    let mut ranges = sheet.conditional_formatting_ranges.clone();
-                    ranges.sort();
-                    ranges.dedup();
-                    format!(" Ranges: {}", ranges.join(", "))
-                } else {
-                    String::new()
-                };
-
-                violations.push(Violation::new(
-                    RuleId::Cpx503,
-                    ViolationScope::Sheet(sheet.sheet_index),
-                    format!(
-                        "Sheet has {} conditional formatting rules (threshold: {}).{}",
-                        cf_count, threshold, ranges_str
-                    ),
-                    Severity::Warning,
-                ));
-            }
+            vec![Violation::with_data(
+                RuleId::Cpx503,
+                ViolationScope::Sheet(sheet.sheet_index),
+                ExcessiveConditionalFormattingData {
+                    count: cf_count,
+                    ranges,
+                },
+                Severity::Warning,
+            )]
+        } else {
+            Vec::new()
         }
-
-        Ok(violations)
     }
 }
 
@@ -77,52 +93,39 @@ impl LinterRule for ExcessiveConditionalFormattingRule {
 mod tests {
     use super::*;
     use crate::reader::workbook::Sheet;
-    use std::path::PathBuf;
 
     #[test]
-    fn test_ods_no_violations() {
-        // ODS file without CF should return no violations
-        let workbook = Workbook {
-            path: PathBuf::from("test.ods"),
-            sheets: vec![Sheet {
-                name: "Sheet1".to_string(),
-                ..Default::default()
-            }],
+    fn test_no_violations() {
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
             ..Default::default()
         };
 
-        let rule = ExcessiveConditionalFormattingRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let rule = ExcessiveConditionalFormattingRule::new(&LinterConfig::default());
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
-        assert_eq!(violations.len(), 0);
+        assert!(violations.is_empty());
     }
 
     #[test]
-    fn test_cf_ranges_reporting() {
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![Sheet {
-                name: "Sheet1".to_string(),
-                conditional_formatting_count: 10,
-                conditional_formatting_ranges: vec![
-                    "A1:A10".to_string(),
-                    "B1:B10".to_string(),
-                    "A1:A10".to_string(), // Duplicate to test dedup
-                ],
-                ..Default::default()
-            }],
+    fn test_excessive_cf() {
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            conditional_formatting_count: 10,
+            conditional_formatting_ranges: vec![
+                "A1:A10".to_string(),
+                "B1:B10".to_string(),
+                "A1:A10".to_string(), // Duplicate
+            ],
             ..Default::default()
         };
 
-        let rule = ExcessiveConditionalFormattingRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let rule = ExcessiveConditionalFormattingRule::new(&LinterConfig::default());
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
-        assert!(
-            violations[0]
-                .message()
-                .contains("Sheet has 10 conditional formatting rules")
-        );
-        assert!(violations[0].message().contains("Ranges: A1:A10, B1:B10"));
+        assert_eq!(violations[0].rule_id, RuleId::Cpx503);
     }
 }

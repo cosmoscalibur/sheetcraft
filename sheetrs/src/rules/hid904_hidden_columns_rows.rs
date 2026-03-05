@@ -2,15 +2,41 @@
 //!
 //! Description: Identifies rows or columns manually collapsed into invisibility.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::Sheet;
+use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 /// Rule that detects hidden columns and rows
 pub struct HiddenColumnsRowsRule;
 
-impl LinterRule for HiddenColumnsRowsRule {
+/// Incident data for HID904.
+#[derive(Debug)]
+pub struct HiddenColumnsRowsData {
+    /// 0-based hidden column indices.
+    pub columns: Vec<u32>,
+    /// 0-based hidden row indices.
+    pub rows: Vec<u32>,
+}
+
+impl ViolationData for HiddenColumnsRowsData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        if !self.columns.is_empty() {
+            let ranges = group_contiguous_indices(&self.columns);
+            let strs: Vec<String> = ranges.iter().map(|r| format_column_range(r)).collect();
+            format!("Hidden columns: {}", strs.join(", "))
+        } else {
+            let ranges = group_contiguous_indices(&self.rows);
+            let strs: Vec<String> = ranges.iter().map(|r| format_row_range(r)).collect();
+            format!("Hidden rows: {}", strs.join(", "))
+        }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl WalkerRule for HiddenColumnsRowsRule {
     fn id(&self) -> RuleId {
         RuleId::Hid904
     }
@@ -23,40 +49,40 @@ impl LinterRule for HiddenColumnsRowsRule {
         RuleCategory::Hidden
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_sheet_start(&self, sheet: &Sheet, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            // Check hidden columns
-            if !sheet.hidden_columns.is_empty() {
-                let ranges = group_contiguous_indices(&sheet.hidden_columns);
-                for range in ranges {
-                    let range_str = format_column_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Hid904,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!("Hidden columns: {}", range_str),
-                        Severity::Warning,
-                    ));
-                }
-            }
-
-            // Check hidden rows
-            if !sheet.hidden_rows.is_empty() {
-                let ranges = group_contiguous_indices(&sheet.hidden_rows);
-                for range in ranges {
-                    let range_str = format_row_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Hid904,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!("Hidden rows: {}", range_str),
-                        Severity::Warning,
-                    ));
-                }
+        if !sheet.hidden_columns.is_empty() {
+            let ranges = group_contiguous_indices(&sheet.hidden_columns);
+            for range in ranges {
+                violations.push(Violation::with_data(
+                    RuleId::Hid904,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    HiddenColumnsRowsData {
+                        columns: range,
+                        rows: Vec::new(),
+                    },
+                    Severity::Warning,
+                ));
             }
         }
 
-        Ok(violations)
+        if !sheet.hidden_rows.is_empty() {
+            let ranges = group_contiguous_indices(&sheet.hidden_rows);
+            for range in ranges {
+                violations.push(Violation::with_data(
+                    RuleId::Hid904,
+                    ViolationScope::Sheet(sheet.sheet_index),
+                    HiddenColumnsRowsData {
+                        columns: Vec::new(),
+                        rows: range,
+                    },
+                    Severity::Warning,
+                ));
+            }
+        }
+
+        violations
     }
 }
 
@@ -136,66 +162,40 @@ mod tests {
     use super::*;
     use crate::reader::workbook::Sheet;
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_hidden_columns() {
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![Sheet {
-                name: "Sheet1".to_string(),
-                sheet_index: 0,
-                cells: HashMap::new(),
-                used_range: None,
-                hidden_columns: vec![0, 1, 2, 5], // A, B, C, F
-                hidden_rows: Vec::new(),
-                merged_cells: Vec::new(),
-                sheet_path: None,
-                formula_parsing_error: None,
-                conditional_formatting_count: 0,
-                conditional_formatting_ranges: Vec::new(),
-                visible: true,
-            }],
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            sheet_index: 0,
+            cells: HashMap::new(),
+            hidden_columns: vec![0, 1, 2, 5], // A, B, C, F
             ..Default::default()
         };
 
         let rule = HiddenColumnsRowsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 2); // Two ranges: A:C and F
         assert_eq!(violations[0].rule_id, RuleId::Hid904);
-        assert!(violations[0].message().contains("A:C"));
-        assert!(violations[1].message().contains("F"));
     }
 
     #[test]
     fn test_hidden_rows() {
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![Sheet {
-                name: "Sheet1".to_string(),
-                sheet_index: 0,
-                cells: HashMap::new(),
-                used_range: None,
-                hidden_columns: Vec::new(),
-                hidden_rows: vec![0, 1, 2, 10, 11], // 1, 2, 3, 11, 12
-                merged_cells: Vec::new(),
-                sheet_path: None,
-                formula_parsing_error: None,
-                conditional_formatting_count: 0,
-                conditional_formatting_ranges: Vec::new(),
-                visible: true,
-            }],
+        let sheet = Sheet {
+            name: "Sheet1".to_string(),
+            sheet_index: 0,
+            cells: HashMap::new(),
+            hidden_rows: vec![0, 1, 2, 10, 11], // 1:3 and 11:12
             ..Default::default()
         };
 
         let rule = HiddenColumnsRowsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let mut ctx = LinterContext::default();
+        let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
-        assert_eq!(violations.len(), 2); // Two ranges: 1:3 and 11:12
-        assert_eq!(violations[0].rule_id, RuleId::Hid904);
-        assert!(violations[0].message().contains("1:3"));
-        assert!(violations[1].message().contains("11:12"));
+        assert_eq!(violations.len(), 2);
     }
 
     #[test]

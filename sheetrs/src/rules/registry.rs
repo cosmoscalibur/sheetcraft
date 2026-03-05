@@ -177,8 +177,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         // ref301, ref302, ref303 moved to walker
         Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
         Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
-        // ref306 moved to walker
-        Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
+        // ref306, ref307 moved to walker
         Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
         Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
         Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
@@ -188,12 +187,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
         Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
         // Complexity (5xx)
-        // cpx501, cpx502 moved to walker
-        Box::new(
-            cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
-                config,
-            ),
-        ),
+        // cpx501, cpx502, cpx503 moved to walker
         Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
         Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule::new(
             config,
@@ -203,11 +197,10 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(cpx508_many_references::ManyReferencesRule),
         Box::new(cpx509_long_formula::LongFormulaRule::new(config)),
         // Vulnerable Formulas (6xx)
-        Box::new(vul601_duplicate_formulas::DuplicateFormulasRule),
+        // vul601, vul603 moved to walker
         Box::new(vul602_volatile_functions::VolatileFunctionsRule::new(
             config,
         )),
-        Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
         Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
             config,
         )),
@@ -215,10 +208,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(vul606_deprecated_func::DeprecatedFuncRule),
         Box::new(vul607_unprotected::UnprotectedRule),
         // Data Issues (7xx)
-        // dat701 moved to walker
-        Box::new(dat702_numeric_formats::InconsistentNumberFormatRule),
-        Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
-        Box::new(dat704_long_text::LongTextCellRule::new(config)),
+        // dat701, dat702, dat703, dat704 moved to walker
         Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
         Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
         Box::new(dat707_validation_miss::ValidationMissRule),
@@ -231,8 +221,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         // Hidden Information (9xx)
         Box::new(hid901_hidden_defined_name::HiddenDefinedNameRule),
         Box::new(hid902_very_hidden_worksheet::VeryHiddenWorksheetRule),
-        // hid903 moved to walker
-        Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
+        // hid903, hid904 moved to walker
         Box::new(hid905_hidden_formula::HiddenFormulaRule),
         Box::new(hid906_invisible_cell_value::InvisibleCellValueRule),
         // Files & Settings (10xx)
@@ -263,8 +252,23 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(cpx502_merged_cells::MergedCellsRule),
         // Data Issues (7xx)
         Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
+        Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
+        Box::new(dat704_long_text::LongTextCellRule::new(config)),
+        // Complexity (5xx)
+        Box::new(
+            cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
+                config,
+            ),
+        ),
+        // Vulnerability (6xx)
+        Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
+        Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
+        // Reference (3xx)
+        Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
         // Hidden Information (9xx)
         Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
+        Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
         // External References (8xx)
         Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
         Box::new(ext803_web_urls::WebUrlsRule::new(config)),
@@ -315,6 +319,18 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Ext802 => Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
         RuleId::Ext803 => Box::new(ext803_web_urls::WebUrlsRule::new(config)),
         RuleId::Hid903 => Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
+        RuleId::Hid904 => Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
+        RuleId::Ref307 => Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
+        RuleId::Cpx503 => Box::new(
+            cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
+                config,
+            ),
+        ),
+        RuleId::Vul601 => Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
+        RuleId::Vul603 => Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
+        RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
+        RuleId::Data703 => Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
+        RuleId::Data704 => Box::new(dat704_long_text::LongTextCellRule::new(config)),
         RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
         RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
