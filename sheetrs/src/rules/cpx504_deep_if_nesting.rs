@@ -196,7 +196,7 @@ fn count_if_nesting(formula: &str) -> usize {
     let mut i = 0;
 
     while i < len {
-        if i + 3 <= len && &upper[i..i + 3] == "IF(" {
+        if i + 3 <= len && bytes[i..i + 3] == *b"IF(" {
             current_depth += 1;
             max_depth = max_depth.max(current_depth);
             i += 3;
@@ -566,5 +566,12 @@ mod tests {
         let rule = DeepIfNestingRule::default();
         let violations = run_violations(&sheet, &rule);
         assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn test_count_if_nesting_non_ascii() {
+        // Non-ASCII chars like Ó (2 bytes in UTF-8) must not cause a panic.
+        assert_eq!(count_if_nesting(r#""INFORMACIÓN"&IF(A1,1,0)"#), 1);
+        assert_eq!(count_if_nesting(r#"IF("AÑO"="",IF(A1,1,0),0)"#), 2);
     }
 }
