@@ -1,4 +1,4 @@
-//! EXT803: Web URL links in cell values
+//! EXT802: Web URL links in cell values
 //!
 //! Description: Detects outbound web navigation links within cell values.
 
@@ -77,7 +77,7 @@ impl Default for WebUrlsRule {
     }
 }
 
-/// Incident data for EXT803.
+/// Incident data for EXT802.
 #[derive(Debug)]
 pub struct WebUrlData {
     /// The detected URL.
@@ -156,7 +156,7 @@ fn check_url_status(_url: &str, _timeout_secs: u64) -> bool {
 
 impl WalkerRule for WebUrlsRule {
     fn id(&self) -> RuleId {
-        RuleId::Ext803
+        RuleId::Ext802
     }
 
     fn name(&self) -> &str {
@@ -205,7 +205,7 @@ impl WalkerRule for WebUrlsRule {
                 let ranges = find_contiguous_ranges(&group_cells);
                 for range in ranges {
                     violations.push(Violation::with_data(
-                        RuleId::Ext803,
+                        RuleId::Ext802,
                         ViolationScope::Sheet(sheet.sheet_index),
                         WebUrlData {
                             url: url.clone(),
@@ -262,7 +262,7 @@ mod tests {
         let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, RuleId::Ext803);
+        assert_eq!(violations[0].rule_id, RuleId::Ext802);
     }
 
     #[test]

@@ -117,34 +117,18 @@ pub enum RuleId {
     Data706,
     /// DATA707: Validation Missing
     Data707,
-    /// DATA708: Sensitive Data
-    Data708,
 
     // External References (8xx)
-    /// EXT801: Named External Reference
+    /// EXT801: External Workbook
     Ext801,
-    /// EXT802: External Workbook
+    /// EXT802: Web URLs
     Ext802,
-    /// EXT803: Web URLs
-    Ext803,
-    /// EXT804: Pivot External Reference
-    Ext804,
-    /// EXT805: Chart External Reference
-    Ext805,
 
     // Hidden Information (9xx)
-    /// HID901: Hidden Defined Name
+    /// HID901: Hidden Worksheet
     Hid901,
-    /// HID902: Very Hidden Worksheet
+    /// HID902: Hidden Columns/Rows
     Hid902,
-    /// HID903: Hidden Worksheet
-    Hid903,
-    /// HID904: Hidden Columns/Rows
-    Hid904,
-    /// HID905: Hidden Formula
-    Hid905,
-    /// HID906: Invisible Cell Value
-    Hid906,
 
     // Files & Settings (10xx)
     /// FILE1001: Large File Size
@@ -209,18 +193,10 @@ impl RuleId {
             Self::Data705 => "DATA705",
             Self::Data706 => "DATA706",
             Self::Data707 => "DATA707",
-            Self::Data708 => "DATA708",
             Self::Ext801 => "EXT801",
             Self::Ext802 => "EXT802",
-            Self::Ext803 => "EXT803",
-            Self::Ext804 => "EXT804",
-            Self::Ext805 => "EXT805",
             Self::Hid901 => "HID901",
             Self::Hid902 => "HID902",
-            Self::Hid903 => "HID903",
-            Self::Hid904 => "HID904",
-            Self::Hid905 => "HID905",
-            Self::Hid906 => "HID906",
             Self::File1001 => "FILE1001",
             Self::File1002 => "FILE1002",
             Self::File1003 => "FILE1003",
@@ -297,18 +273,10 @@ impl FromStr for RuleId {
             "DATA705" => Ok(Self::Data705),
             "DATA706" => Ok(Self::Data706),
             "DATA707" => Ok(Self::Data707),
-            "DATA708" => Ok(Self::Data708),
             "EXT801" => Ok(Self::Ext801),
             "EXT802" => Ok(Self::Ext802),
-            "EXT803" => Ok(Self::Ext803),
-            "EXT804" => Ok(Self::Ext804),
-            "EXT805" => Ok(Self::Ext805),
             "HID901" => Ok(Self::Hid901),
             "HID902" => Ok(Self::Hid902),
-            "HID903" => Ok(Self::Hid903),
-            "HID904" => Ok(Self::Hid904),
-            "HID905" => Ok(Self::Hid905),
-            "HID906" => Ok(Self::Hid906),
             "FILE1001" => Ok(Self::File1001),
             "FILE1002" => Ok(Self::File1002),
             "FILE1003" => Ok(Self::File1003),

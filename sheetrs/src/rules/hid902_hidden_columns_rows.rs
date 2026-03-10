@@ -1,4 +1,4 @@
-//! HID904: Hidden rows/columns detection
+//! HID902: Hidden rows/columns detection
 //!
 //! Description: Identifies rows or columns manually collapsed into invisibility.
 
@@ -9,7 +9,7 @@ use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData
 /// Rule that detects hidden columns and rows
 pub struct HiddenColumnsRowsRule;
 
-/// Incident data for HID904.
+/// Incident data for HID902.
 #[derive(Debug)]
 pub struct HiddenColumnsRowsData {
     /// 0-based hidden column indices.
@@ -38,7 +38,7 @@ impl ViolationData for HiddenColumnsRowsData {
 
 impl WalkerRule for HiddenColumnsRowsRule {
     fn id(&self) -> RuleId {
-        RuleId::Hid904
+        RuleId::Hid902
     }
 
     fn name(&self) -> &str {
@@ -56,7 +56,7 @@ impl WalkerRule for HiddenColumnsRowsRule {
             let ranges = group_contiguous_indices(&sheet.hidden_columns);
             for range in ranges {
                 violations.push(Violation::with_data(
-                    RuleId::Hid904,
+                    RuleId::Hid902,
                     ViolationScope::Sheet(sheet.sheet_index),
                     HiddenColumnsRowsData {
                         columns: range,
@@ -71,7 +71,7 @@ impl WalkerRule for HiddenColumnsRowsRule {
             let ranges = group_contiguous_indices(&sheet.hidden_rows);
             for range in ranges {
                 violations.push(Violation::with_data(
-                    RuleId::Hid904,
+                    RuleId::Hid902,
                     ViolationScope::Sheet(sheet.sheet_index),
                     HiddenColumnsRowsData {
                         columns: Vec::new(),
@@ -178,7 +178,7 @@ mod tests {
         let violations = rule.on_sheet_start(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 2); // Two ranges: A:C and F
-        assert_eq!(violations[0].rule_id, RuleId::Hid904);
+        assert_eq!(violations[0].rule_id, RuleId::Hid902);
     }
 
     #[test]

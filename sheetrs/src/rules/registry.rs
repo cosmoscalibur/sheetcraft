@@ -52,18 +52,10 @@ pub const DEFAULT_ACTIVE_RULES: &[RuleId] = &[
     RuleId::Data705,
     RuleId::Data706,
     RuleId::Data707,
-    RuleId::Data708,
     RuleId::Ext801,
     RuleId::Ext802,
-    RuleId::Ext803,
-    RuleId::Ext804,
-    RuleId::Ext805,
     RuleId::Hid901,
     RuleId::Hid902,
-    RuleId::Hid903,
-    RuleId::Hid904,
-    RuleId::Hid905,
-    RuleId::Hid906,
     RuleId::File1001,
     RuleId::File1002,
     RuleId::File1003,
@@ -195,22 +187,13 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(vul606_deprecated_func::DeprecatedFuncRule),
         Box::new(vul607_unprotected::UnprotectedRule),
         // Data Issues (7xx)
-        // dat701, dat702, dat703, dat704 moved to walker
-        Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
+        // dat701, dat702, dat703, dat704, dat705 moved to walker
         Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
         Box::new(dat707_validation_miss::ValidationMissRule),
-        Box::new(dat708_sensitive_data::SensitiveDataRule),
         // External References (8xx)
-        Box::new(ext801_name_ext_ref::NameExtRefRule),
-        // ext802, ext803 moved to walker
-        Box::new(ext804_pivot_ext_ref::PivotExtRefRule),
-        Box::new(ext805_chart_ext_ref::ChartExtRefRule),
+        // ext801, ext802 moved to walker
         // Hidden Information (9xx)
-        Box::new(hid901_hidden_defined_name::HiddenDefinedNameRule),
-        Box::new(hid902_very_hidden_worksheet::VeryHiddenWorksheetRule),
-        // hid903, hid904 moved to walker
-        Box::new(hid905_hidden_formula::HiddenFormulaRule),
-        Box::new(hid906_invisible_cell_value::InvisibleCellValueRule),
+        // hid901, hid902 moved to walker
         // Files & Settings (10xx)
         // file1001, file1002, file1003 moved to walker
         // VBA Issues (11xx)
@@ -242,6 +225,7 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
         Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
         Box::new(dat704_long_text::LongTextCellRule::new(config)),
+        Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
         // Complexity (5xx)
         Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
@@ -264,11 +248,11 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(cpx508_many_references::ManyReferencesRule),
         Box::new(cpx509_long_formula::LongFormulaRule),
         // Hidden Information (9xx)
-        Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
-        Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
+        Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
+        Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
         // External References (8xx)
-        Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
-        Box::new(ext803_web_urls::WebUrlsRule::new(config)),
+        Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
+        Box::new(ext802_web_urls::WebUrlsRule::new(config)),
         // Files & Settings (10xx)
         Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
@@ -315,10 +299,10 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
         RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
-        RuleId::Ext802 => Box::new(ext802_external_workbook::ExternalWorkbooksRule::new()),
-        RuleId::Ext803 => Box::new(ext803_web_urls::WebUrlsRule::new(config)),
-        RuleId::Hid903 => Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
-        RuleId::Hid904 => Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
+        RuleId::Ext801 => Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
+        RuleId::Ext802 => Box::new(ext802_web_urls::WebUrlsRule::new(config)),
+        RuleId::Hid901 => Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
+        RuleId::Hid902 => Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
         RuleId::Ref307 => Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
         RuleId::Cpx503 => Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
@@ -337,6 +321,7 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
         RuleId::Data703 => Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
         RuleId::Data704 => Box::new(dat704_long_text::LongTextCellRule::new(config)),
+        RuleId::Data705 => Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
         RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
         RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),

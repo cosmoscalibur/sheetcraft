@@ -1,4 +1,4 @@
-//! EXT802: External workbook references
+//! EXT801: External workbook references
 //!
 //! Description: Identifies cell-level formula links to external spreadsheet files.
 
@@ -35,7 +35,7 @@ impl Default for ExternalWorkbooksRule {
     }
 }
 
-/// Incident data for EXT802.
+/// Incident data for EXT801.
 #[derive(Debug)]
 pub struct ExternalWorkbookData {
     /// 0-based external workbook index (into `Workbook::external_workbooks`).
@@ -97,7 +97,7 @@ fn extract_external_workbook_indices(formula: &str) -> Vec<usize> {
 
 impl WalkerRule for ExternalWorkbooksRule {
     fn id(&self) -> RuleId {
-        RuleId::Ext802
+        RuleId::Ext801
     }
 
     fn name(&self) -> &str {
@@ -137,7 +137,7 @@ impl WalkerRule for ExternalWorkbooksRule {
                 let ranges = find_contiguous_ranges(&group_cells);
                 for range in ranges {
                     violations.push(Violation::with_data(
-                        RuleId::Ext802,
+                        RuleId::Ext801,
                         ViolationScope::Sheet(sheet.sheet_index),
                         ExternalWorkbookData {
                             workbook_index: idx,
@@ -193,6 +193,6 @@ mod tests {
         let violations = rule.on_sheet_end(&sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, RuleId::Ext802);
+        assert_eq!(violations[0].rule_id, RuleId::Ext801);
     }
 }

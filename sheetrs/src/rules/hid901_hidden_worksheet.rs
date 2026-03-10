@@ -1,4 +1,4 @@
-//! HID903: Hidden Worksheet detection
+//! HID901: Hidden Worksheet detection
 
 use super::{LinterContext, WalkerRule};
 use crate::reader::Sheet;
@@ -9,7 +9,7 @@ use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData
 /// Hidden sheets can sometimes contain sensitive data or deprecated logic that should be removed.
 pub struct HiddenWorksheetRule;
 
-/// Incident data for HID903.
+/// Incident data for HID901.
 #[derive(Debug)]
 pub struct HiddenWorksheetData {
     /// 0-based sheet index of the hidden sheet.
@@ -32,7 +32,7 @@ impl ViolationData for HiddenWorksheetData {
 
 impl WalkerRule for HiddenWorksheetRule {
     fn id(&self) -> RuleId {
-        RuleId::Hid903
+        RuleId::Hid901
     }
 
     fn name(&self) -> &str {
@@ -48,7 +48,7 @@ impl WalkerRule for HiddenWorksheetRule {
 
         if !sheet.visible {
             violations.push(Violation::with_data(
-                RuleId::Hid903,
+                RuleId::Hid901,
                 ViolationScope::Sheet(sheet.sheet_index),
                 HiddenWorksheetData {
                     sheet_index: sheet.sheet_index,
@@ -80,7 +80,7 @@ mod tests {
         let violations = rule.on_sheet_start(&hidden_sheet, &mut ctx);
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, RuleId::Hid903);
+        assert_eq!(violations[0].rule_id, RuleId::Hid901);
         assert_eq!(violations[0].scope, ViolationScope::Sheet(1));
         assert!(violations[0].message().contains("Hidden sheet"));
     }

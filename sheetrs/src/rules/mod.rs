@@ -62,22 +62,14 @@ pub mod dat704_long_text;
 pub mod dat705_unnecessary_space;
 pub mod dat706_numeric_text_calc;
 pub mod dat707_validation_miss;
-pub mod dat708_sensitive_data;
 
 // Rule implementations - External References (8xx)
-pub mod ext801_name_ext_ref;
-pub mod ext802_external_workbook;
-pub mod ext803_web_urls;
-pub mod ext804_pivot_ext_ref;
-pub mod ext805_chart_ext_ref;
+pub mod ext801_external_workbook;
+pub mod ext802_web_urls;
 
 // Rule implementations - Hidden Information (9xx)
-pub mod hid901_hidden_defined_name;
-pub mod hid902_very_hidden_worksheet;
-pub mod hid903_hidden_worksheet;
-pub mod hid904_hidden_columns_rows;
-pub mod hid905_hidden_formula;
-pub mod hid906_invisible_cell_value;
+pub mod hid901_hidden_worksheet;
+pub mod hid902_hidden_columns_rows;
 
 // Rule implementations - Files & Settings (10xx)
 pub mod file1001_large_file_size;

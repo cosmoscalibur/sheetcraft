@@ -86,31 +86,23 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **DATA702** (Number Stored as Text) | `cell::content` | Num val in Text fmt | - | ✅ | ✅ | Detects mismatch between cell conceptual type and applied format. |
 | **DATA703** (Inconsistent Date Format) | `cell::content` | Date val in Num fmt | - | ✅ | ✅ | Detects formatting drift in cells containing temporal data. |
 | **DATA704** (Long Text Cell) | `cell::value` | > 32k chars | - | ✅ | ✅ | Flags cells storing excessively large strings for the grid format. |
-| **DATA705** (Unnecessary Space) | `cell::value" | "" value "" ` | - | ❌ | ❌ | Detects invisible white-space padding at the start/end of values. |
+| **DATA705** (Unnecessary Space) | `cell::value" | "" value "" ` | - | ✅ | ✅ | Detects invisible white-space padding at the start/end of values. |
 | **DATA706** (Numeric Text Calculation)| `cell::formula" | "=""10"" + 1` | - | ❌ | ❌ | Identifies mathematical operations involving stringed numbers. |
 | **DATA707** (Data Validation Rule not Followed) | `cell::value` | Invalid input | - | ❌ | ❌ | Flags data points violating defined spreadsheet constraints. |
-| **DATA708** (Sensitive Data) | `cell::value` | CC Number / PII | - | ❌ | ❌ | Scans for patterns indicating private or financial data. |
 
 ## 8. External References (EXT8xx)
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **EXT801** (Name Ext Ref) | `book::named_ranges` | `RefersTo: [B.xlsx]` | - | ❌ | ❌ | Identifies named range links to external spreadsheet files. |
-| **EXT802** (External Workbook Reference) | `cell::formula` | `=[Book1.xlsx]...` | - | ✅ | ✅ | Identifies cell-level formula links to external spreadsheet files. |
-| **EXT803** (Web URLs) | `cell::formula` | `HYPERLINK(http..)` | - | ✅ | ✅ | Detects outbound web navigation links within formula logic. |
-| **EXT804** (Pivot Ext Ref) | `sheet::metadata` | Pivot linked to file | - | ❌ | ❌ | Flags Pivot structures dependent on external data files. |
-| **EXT805** (Chart Ext Ref) | `sheet::metadata` | Chart linked to file | - | ❌ | ❌ | Flags Charts dependent on data sources in external files. |
+| **EXT801** (External Workbook Reference) | `cell::formula` | `=[Book1.xlsx]...` | - | ✅ | ✅ | Identifies cell-level formula links to external spreadsheet files. |
+| **EXT802** (Web URLs) | `cell::formula` | `HYPERLINK(http..)` | - | ✅ | ✅ | Detects outbound web navigation links within formula logic. |
 
 ## 9. Hidden Information (HID9xx)
 
 | SheetRS Rule | Scope | Examples | Dependencies | Support Status | Migrated | Concept / Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **HID901** (Hidden Defined Name) | `book::named_ranges` | `visible: false` | - | ❌ | ❌ | Detects invisible named ranges used for technical storage. |
-| **HID902** (Very Hidden Worksheet) | `sheet::visibility` | `hidden` | - | ❌ | ❌ | Specifically targets Excel "Very Hidden" sheets (vburied). |
-| **HID903** (Hidden Worksheet) | `sheet::visibility` | `hidden` / `vhidden` | - | ✅ | ✅ | Detects worksheets manually or programmatically hidden from view. |
-| **HID904** (Hidden Rows or Columns) | `sheet::layout` | `row::hidden` | - | ✅ | ✅ | Identifies rows or columns manually collapsed into invisibility. |
-| **HID905** (Hidden Formula) | `cell::style` | `formula::hidden` | - | ❌ | ❌ | Flags cells with logic hidden from the formula bar. |
-| **HID906** (Invisible Cell Value) | `cell::style` | Font color = BG | - | ❌ | ❌ | Detects data masked by color matches or formatting tricks. |
+| **HID901** (Hidden Worksheet) | `sheet::visibility` | `hidden` / `vhidden` | - | ✅ | ✅ | Detects worksheets manually or programmatically hidden from view. |
+| **HID902** (Hidden Rows or Columns) | `sheet::layout` | `row::hidden` | - | ✅ | ✅ | Identifies rows or columns manually collapsed into invisibility. |
 
 ## 10. Files & Settings (FILE10xx)
 
