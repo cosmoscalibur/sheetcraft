@@ -60,6 +60,27 @@ pub fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
     ranges
 }
 
+/// Format a group of cells as a single range string (e.g., `A1:C5`).
+///
+/// Returns the single cell reference for single-cell groups,
+/// or a `start:end` bounding-box range for multi-cell groups.
+pub fn format_single_range(cells: &[(u32, u32)]) -> String {
+    use crate::violation::CellReference;
+
+    if cells.is_empty() {
+        return String::new();
+    }
+
+    if cells.len() == 1 {
+        return CellReference::new(cells[0].0, cells[0].1).to_string();
+    }
+
+    let (min_row, min_col, max_row, max_col) = bounding_box(cells);
+    let start = CellReference::new(min_row, min_col);
+    let end = CellReference::new(max_row, max_col);
+    format!("{start}:{end}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

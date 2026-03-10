@@ -59,12 +59,12 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **CPX501** (Sheet Counts) | `book::metadata` | > 50 Sheets | - | ✅ | ✅ | Detects architectural bloat and navigation difficulty. |
 | **CPX502** (Merged Cells) | `sheet::layout` | Merged A1:B2 | - | ✅ | ✅ | Identifies merged cells which complicate data manipulation. |
 | **CPX503** (Excessive Cond Format) | `sheet::style` | > 25 rules | - | ✅ | ✅ | Detects high volume of conditional rules slowing UI interactions. |
-| **CPX504** (Deep IF Nesting) | `cell::formula` | 4 nested IFs | - | ✅ | ❌ | Specifically targets functional depth within conditional IF logic. |
-| **CPX505** (Many Nested Functions) | `cell::formula` | 7 level nesting | `!CPX504` | ✅ | ❌ | Identifies deep nesting. Only triggers if Deep IF threshold is not met. |
-| **CPX506** (Many Operations) | `cell::formula` | `A1+A2*A3...` (>8) | `!CPX505` | ❌ | ❌ | Counts arithmetic/logical operators within a single formula. |
-| **CPX507** (Multiple Sheet Ref) | `cell::formula` | `=S1!A1+S2!A1` | - | ❌ | ❌ | Flags formulas spanning three or more distinct worksheets. |
-| **CPX508** (Many References) | `cell::formula (inter)`| > 10 distinct refs | `!CPX506` | ❌ | ❌ | Identifies formulas with a high cardinality of cell dependencies. |
-| **CPX509** (Long Formula) | `cell::formula` | > 200 chars | `!CPX504`.. | ✅ | ❌ | Catch-all for excessive length when other structural risks are low. |
+| **CPX504** (Deep IF Nesting) | `cell::formula` | 4 nested IFs | - | ✅ | ✅ | Primary emitter for CPX504/505/506/508/509 cascade. Targets IF depth. |
+| **CPX505** (Many Nested Functions) | `cell::formula` | 7 level nesting | `!CPX504` | ✅ | ✅ | No-op shell. Emitted by CPX504 if IF threshold is not met. |
+| **CPX506** (Many Operations) | `cell::formula` | `A1+A2*A3...` (>8) | `!CPX505` | ✅ | ✅ | No-op shell. Emitted by CPX504 if nesting thresholds are not met. |
+| **CPX507** (Multiple Sheet Ref) | `cell::formula` | `=S1!A1+S2!A1` | - | ✅ | ✅ | Independent walker. Flags formulas spanning ≥3 distinct worksheets. |
+| **CPX508** (Many References) | `cell::formula (inter)`| > 10 distinct refs | `!CPX506` | ✅ | ✅ | No-op shell. Emitted by CPX504 if operator threshold is not met. |
+| **CPX509** (Long Formula) | `cell::formula` | > 200 chars | `!CPX505` | ✅ | ✅ | No-op shell. Emitted by CPX504 if nesting thresholds are not met. |
 
 ## 6. Vulnerable Formulas (VUL6xx)
 

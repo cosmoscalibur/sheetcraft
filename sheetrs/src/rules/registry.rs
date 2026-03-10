@@ -185,15 +185,7 @@ pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
         Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
         Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
         // Complexity (5xx)
-        // cpx501, cpx502, cpx503 moved to walker
-        Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
-        Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule::new(
-            config,
-        )),
-        Box::new(cpx506_many_operations::ManyOperationsRule),
-        Box::new(cpx507_multiple_sheet_ref::MultipleSheetRefRule),
-        Box::new(cpx508_many_references::ManyReferencesRule),
-        Box::new(cpx509_long_formula::LongFormulaRule::new(config)),
+        // cpx501 through cpx509 moved to walker
         // Vulnerable Formulas (6xx)
         // vul601, vul602, vul603 moved to walker
         Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
@@ -264,6 +256,13 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
         Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
+        // Complexity (5xx)
+        Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
+        Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule),
+        Box::new(cpx506_many_operations::ManyOperationsRule),
+        Box::new(cpx507_multiple_sheet_ref::MultipleSheetRefRule::new(config)),
+        Box::new(cpx508_many_references::ManyReferencesRule),
+        Box::new(cpx509_long_formula::LongFormulaRule),
         // Hidden Information (9xx)
         Box::new(hid903_hidden_worksheet::HiddenWorksheetRule),
         Box::new(hid904_hidden_columns_rows::HiddenColumnsRowsRule),
@@ -326,6 +325,12 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
                 config,
             ),
         ),
+        RuleId::Cpx504 => Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
+        RuleId::Cpx505 => Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule),
+        RuleId::Cpx506 => Box::new(cpx506_many_operations::ManyOperationsRule),
+        RuleId::Cpx507 => Box::new(cpx507_multiple_sheet_ref::MultipleSheetRefRule::new(config)),
+        RuleId::Cpx508 => Box::new(cpx508_many_references::ManyReferencesRule),
+        RuleId::Cpx509 => Box::new(cpx509_long_formula::LongFormulaRule),
         RuleId::Vul601 => Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
         RuleId::Vul602 => Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
         RuleId::Vul603 => Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),

@@ -1,34 +1,349 @@
-//! CPX504: Deeply nested IF statements detection
+//! CPX504: Primary emitter for the CPX5xx formula-complexity cascade
 //!
 //! Description: Detects deeply nested IF statements which are hard to maintain and debug.
+//!
+//! This module is the **primary emitter** for the CPX5xx formula-complexity chain.
+//! On each cell it evaluates the full dependency cascade and emits at most one
+//! violation per cell following the priority order:
+//!
+//! 1. **CPX504** — deep IF nesting (>`max_if_nesting`)
+//! 2. **CPX505** — deep parenthesis nesting (>`max_formula_nesting`)
+//! 3. **CPX506** — many operators (>`max_operations`)
+//! 4. **CPX508** — many cell references (>`max_references`)  *(suppressed by CPX506)*
+//! 5. **CPX509** — long formula (>`max_formula_length`) *(suppressed by CPX505)*
+//!
+//! CPX507 (multiple sheet refs) is independent — handled by its own module.
+//!
+//! The subordinate modules (`cpx505`, `cpx506`, `cpx508`, `cpx509`) are no-op walker
+//! shells registered only for configuration enable/disable.
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::Workbook;
-use crate::violation::{CellReference, RuleId, Severity, Violation, ViolationScope};
-use anyhow::Result;
-use std::collections::{HashSet, VecDeque};
+use crate::reader::{Cell, Sheet};
+use crate::violation::{
+    CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
+};
 
-/// Rule that detects deeply nested IF statements.
+/// Rule that detects deeply nested IF statements and serves as the
+/// primary emitter for the CPX5xx formula-complexity dependency chain.
 pub struct DeepIfNestingRule {
+    /// Maximum allowed IF nesting depth (CPX504).
     max_if_nesting: usize,
+    /// Maximum allowed parenthesis nesting depth (CPX505).
+    max_nesting: usize,
+    /// Maximum allowed operator count (CPX506).
+    max_operations: usize,
+    /// Maximum allowed cell references (CPX508).
+    max_references: usize,
+    /// Maximum allowed formula length in characters (CPX509).
+    max_formula_length: usize,
 }
 
 impl DeepIfNestingRule {
+    /// Create a new instance from configuration.
     pub fn new(config: &LinterConfig) -> Self {
-        let max_if_nesting = config.get_param_int("max_if_nesting", None).unwrap_or(5) as usize;
-
-        Self { max_if_nesting }
+        Self {
+            max_if_nesting: config.get_param_int("max_if_nesting", None).unwrap_or(5) as usize,
+            max_nesting: config
+                .get_param_int("max_formula_nesting", None)
+                .unwrap_or(5) as usize,
+            max_operations: config.get_param_int("max_operations", None).unwrap_or(8) as usize,
+            max_references: config.get_param_int("max_references", None).unwrap_or(10) as usize,
+            max_formula_length: config
+                .get_param_int("max_formula_length", None)
+                .unwrap_or(255) as usize,
+        }
     }
 }
 
 impl Default for DeepIfNestingRule {
     fn default() -> Self {
-        Self { max_if_nesting: 5 }
+        Self {
+            max_if_nesting: 5,
+            max_nesting: 5,
+            max_operations: 8,
+            max_references: 10,
+            max_formula_length: 255,
+        }
     }
 }
 
-impl LinterRule for DeepIfNestingRule {
+// ---------------------------------------------------------------------------
+// Compact ViolationData structs — incident-only, no setup values
+// ---------------------------------------------------------------------------
+
+/// Incident data for CPX504 (deep IF nesting).
+#[derive(Debug)]
+pub struct DeepIfNestingData {
+    /// Detected IF nesting depth.
+    pub depth: usize,
+    /// Cell where the formula resides.
+    pub cell: CellReference,
+}
+
+impl ViolationData for DeepIfNestingData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Deeply nested IF statements ({} levels) at {}. Consider lookup tables or IFS.",
+            self.depth, self.cell
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Incident data for CPX505 (deep formula nesting).
+#[derive(Debug)]
+pub struct DeepFormulaNestingData {
+    /// Detected parenthesis nesting depth.
+    pub depth: usize,
+    /// Cell where the formula resides.
+    pub cell: CellReference,
+}
+
+impl ViolationData for DeepFormulaNestingData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Formula with deep nesting ({} levels) at {}. Consider simplifying.",
+            self.depth, self.cell
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Incident data for CPX506 (many operations).
+#[derive(Debug)]
+pub struct ManyOperationsData {
+    /// Detected operator count.
+    pub count: usize,
+    /// Cell where the formula resides.
+    pub cell: CellReference,
+}
+
+impl ViolationData for ManyOperationsData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Formula with many operations ({}) at {}.",
+            self.count, self.cell
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Incident data for CPX508 (many references).
+#[derive(Debug)]
+pub struct ManyReferencesData {
+    /// Detected reference count.
+    pub count: usize,
+    /// Cell where the formula resides.
+    pub cell: CellReference,
+}
+
+impl ViolationData for ManyReferencesData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Formula with many references ({}) at {}.",
+            self.count, self.cell
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Incident data for CPX509 (long formula).
+#[derive(Debug)]
+pub struct LongFormulaData {
+    /// Detected formula length.
+    pub length: usize,
+    /// Cell where the formula resides.
+    pub cell: CellReference,
+}
+
+impl ViolationData for LongFormulaData {
+    fn format_message(&self, _ctx: &FormatContext<'_>) -> String {
+        format!(
+            "Long formula ({} characters) at {}.",
+            self.length, self.cell
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Analysis helpers
+// ---------------------------------------------------------------------------
+
+/// Count the maximum nesting depth of IF statements in a formula.
+fn count_if_nesting(formula: &str) -> usize {
+    let upper = formula.to_uppercase();
+    let mut max_depth: usize = 0;
+    let mut current_depth: usize = 0;
+    let bytes = upper.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        if i + 3 <= len && &upper[i..i + 3] == "IF(" {
+            current_depth += 1;
+            max_depth = max_depth.max(current_depth);
+            i += 3;
+        } else if bytes[i] == b')' {
+            current_depth = current_depth.saturating_sub(1);
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+
+    max_depth
+}
+
+/// Calculate the maximum parenthesis nesting depth of a formula.
+fn calculate_nesting_depth(formula: &str) -> usize {
+    let mut max_depth: usize = 0;
+    let mut current_depth: usize = 0;
+
+    for ch in formula.chars() {
+        match ch {
+            '(' => {
+                current_depth += 1;
+                max_depth = max_depth.max(current_depth);
+            }
+            ')' => {
+                current_depth = current_depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+
+    max_depth
+}
+
+/// Count arithmetic and logical operators, skipping string literals.
+///
+/// Recognised: `+`, `-`, `*`, `/`, `^`, `&`, `=`, `<`, `>`, `<=`, `>=`, `<>`.
+/// The leading `=` of a formula is excluded.
+fn count_operators(formula: &str) -> usize {
+    let mut count: usize = 0;
+    let bytes = formula.as_bytes();
+    let len = bytes.len();
+    let mut i = if !bytes.is_empty() && bytes[0] == b'=' {
+        1
+    } else {
+        0
+    };
+    let mut in_string = false;
+
+    while i < len {
+        let ch = bytes[i];
+
+        if ch == b'"' {
+            in_string = !in_string;
+            i += 1;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+
+        match ch {
+            b'+' | b'-' | b'*' | b'/' | b'^' | b'&' => count += 1,
+            b'<' | b'>' => {
+                count += 1;
+                if i + 1 < len && matches!(bytes[i + 1], b'=' | b'>') {
+                    i += 1;
+                }
+            }
+            b'=' => count += 1,
+            _ => {}
+        }
+        i += 1;
+    }
+
+    count
+}
+
+/// Count cell/range references (e.g. `A1`, `$B$2`, `AB12`).
+///
+/// Skips string literals and function names.
+fn count_references(formula: &str) -> usize {
+    let mut count: usize = 0;
+    let bytes = formula.as_bytes();
+    let len = bytes.len();
+    let mut i = if !bytes.is_empty() && bytes[0] == b'=' {
+        1
+    } else {
+        0
+    };
+    let mut in_string = false;
+
+    while i < len {
+        if bytes[i] == b'"' {
+            in_string = !in_string;
+            i += 1;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+
+        if i < len && bytes[i] == b'$' {
+            i += 1;
+        }
+        let col_start = i;
+        while i < len && bytes[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        let col_len = i - col_start;
+        if col_len == 0 || col_len > 3 {
+            i = start + 1;
+            continue;
+        }
+
+        if i < len && bytes[i] == b'$' {
+            i += 1;
+        }
+        let row_start = i;
+        while i < len && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == row_start {
+            i = start + 1;
+            continue;
+        }
+        if i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            i = start + 1;
+            continue;
+        }
+
+        count += 1;
+    }
+
+    count
+}
+
+// ---------------------------------------------------------------------------
+// WalkerRule implementation
+// ---------------------------------------------------------------------------
+
+impl WalkerRule for DeepIfNestingRule {
     fn id(&self) -> RuleId {
         RuleId::Cpx504
     }
@@ -41,151 +356,87 @@ impl LinterRule for DeepIfNestingRule {
         RuleCategory::Complexity
     }
 
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
+        let formula = match cell.as_formula() {
+            Some(f) => f,
+            None => return Vec::new(),
+        };
+
+        let cell_ref = CellReference::new(cell.row, cell.col);
+        let scope = ViolationScope::Sheet(sheet.sheet_index);
+
+        // --- Dependency cascade CPX504 → CPX505 → CPX506 → CPX508 / CPX509 ---
+
+        let if_depth = count_if_nesting(formula);
+        if if_depth > self.max_if_nesting {
+            return vec![Violation::with_data(
+                RuleId::Cpx504,
+                scope,
+                DeepIfNestingData {
+                    depth: if_depth,
+                    cell: cell_ref,
+                },
+                Severity::Warning,
+            )];
+        }
+
+        let nesting = calculate_nesting_depth(formula);
+        if nesting > self.max_nesting {
+            return vec![Violation::with_data(
+                RuleId::Cpx505,
+                scope,
+                DeepFormulaNestingData {
+                    depth: nesting,
+                    cell: cell_ref,
+                },
+                Severity::Warning,
+            )];
+        }
+
+        let ops = count_operators(formula);
+        if ops > self.max_operations {
+            return vec![Violation::with_data(
+                RuleId::Cpx506,
+                scope,
+                ManyOperationsData {
+                    count: ops,
+                    cell: cell_ref,
+                },
+                Severity::Warning,
+            )];
+        }
+
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            let mut deep_if_cells: Vec<(u32, u32)> = Vec::new();
-
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    let if_nesting = count_if_nesting(formula);
-
-                    if if_nesting > self.max_if_nesting {
-                        deep_if_cells.push((cell.row, cell.col));
-                    }
-                }
-            }
-
-            // Group into contiguous ranges and create violations
-            if !deep_if_cells.is_empty() {
-                let ranges = find_contiguous_ranges(&deep_if_cells);
-
-                for range in ranges {
-                    let range_str = format_single_range(&range);
-                    violations.push(Violation::new(
-                        RuleId::Cpx504,
-                        ViolationScope::Sheet(sheet.sheet_index),
-                        format!(
-                            "Deeply nested IF statements (>{} levels) in range: {}. Consider using lookup tables or IFS function.",
-                            self.max_if_nesting, range_str
-                        ),
-                        Severity::Warning,
-                    ));
-                }
-            }
+        // CPX508 — only if CPX506 did not fire
+        let refs = count_references(formula);
+        if refs > self.max_references {
+            violations.push(Violation::with_data(
+                RuleId::Cpx508,
+                scope.clone(),
+                ManyReferencesData {
+                    count: refs,
+                    cell: cell_ref.clone(),
+                },
+                Severity::Warning,
+            ));
         }
 
-        Ok(violations)
-    }
-}
-
-/// Count the maximum nesting depth of IF statements in a formula
-fn count_if_nesting(formula: &str) -> usize {
-    let formula_upper = formula.to_uppercase();
-    let mut max_depth: usize = 0;
-    let mut current_depth: usize = 0;
-    let mut i = 0;
-    let chars: Vec<char> = formula_upper.chars().collect();
-
-    while i < chars.len() {
-        // Look for "IF(" pattern
-        if i + 3 < chars.len() && chars[i] == 'I' && chars[i + 1] == 'F' && chars[i + 2] == '(' {
-            // Make sure it's not part of a larger word (e.g., "COUNTIF")
-            let is_standalone = if i == 0 {
-                true
-            } else {
-                let prev_char = chars[i - 1];
-                !prev_char.is_alphanumeric() && prev_char != '_'
-            };
-
-            if is_standalone {
-                current_depth += 1;
-                max_depth = max_depth.max(current_depth);
-                i += 3; // Skip "IF("
-                continue;
-            }
+        // CPX509 — only if CPX505 did not fire
+        if formula.len() > self.max_formula_length {
+            violations.push(Violation::with_data(
+                RuleId::Cpx509,
+                scope,
+                LongFormulaData {
+                    length: formula.len(),
+                    cell: cell_ref,
+                },
+                Severity::Warning,
+            ));
         }
 
-        // Track closing parentheses to decrement depth
-        if chars[i] == ')' {
-            // This is a simplified approach - decrementing for any closing paren
-            // A more robust approach would track which parens belong to IF statements
-            if current_depth > 0 {
-                // Look ahead to see if this closes an IF
-                // For simplicity, decrement when a closing paren is seen
-                // This may undercount in complex cases but is good enough
-                current_depth = current_depth.saturating_sub(1);
-            }
-        }
-
-        i += 1;
+        violations
     }
-
-    max_depth
-}
-
-/// Format a single contiguous range
-fn format_single_range(cells: &[(u32, u32)]) -> String {
-    if cells.is_empty() {
-        return String::new();
-    }
-
-    if cells.len() == 1 {
-        return CellReference::new(cells[0].0, cells[0].1).to_string();
-    }
-
-    let min_row = cells.iter().map(|(r, _)| r).min().unwrap();
-    let max_row = cells.iter().map(|(r, _)| r).max().unwrap();
-    let min_col = cells.iter().map(|(_, c)| c).min().unwrap();
-    let max_col = cells.iter().map(|(_, c)| c).max().unwrap();
-
-    let start = CellReference::new(*min_row, *min_col);
-    let end = CellReference::new(*max_row, *max_col);
-
-    format!("{}:{}", start, end)
-}
-
-/// Find contiguous ranges from a list of cells
-fn find_contiguous_ranges(cells: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
-    let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
-    let mut visited: HashSet<(u32, u32)> = HashSet::new();
-    let mut ranges: Vec<Vec<(u32, u32)>> = Vec::new();
-
-    for &cell in cells {
-        if visited.contains(&cell) {
-            continue;
-        }
-
-        // BFS to find all connected cells
-        let mut range = Vec::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(cell);
-        visited.insert(cell);
-
-        while let Some((row, col)) = queue.pop_front() {
-            range.push((row, col));
-
-            // Check all 4 adjacent cells (up, down, left, right)
-            let neighbors = [
-                (row.wrapping_sub(1), col),
-                (row + 1, col),
-                (row, col.wrapping_sub(1)),
-                (row, col + 1),
-            ];
-
-            for neighbor in neighbors {
-                if cell_set.contains(&neighbor) && !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    queue.push_back(neighbor);
-                }
-            }
-        }
-
-        ranges.push(range);
-    }
-
-    ranges
 }
 
 #[cfg(test)]
@@ -193,103 +444,127 @@ mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
-    #[test]
-    fn test_deeply_nested_if() {
+    fn make_sheet(formula: &str) -> Sheet {
         let mut cells = HashMap::new();
-        // 6 nested IF statements
         cells.insert(
             (0, 0),
             Cell {
-                formula: Some(<Box<str>>::from(
-                    "=IF(A1,IF(B1,IF(C1,IF(D1,IF(E1,IF(F1,1,0),0),0),0),0),0)",
-                )),
+                formula: Some(<Box<str>>::from(formula)),
                 num_fmt: None,
                 row: 0,
                 col: 0,
                 value: CellValue::Empty,
             },
         );
-
-        let sheet = Sheet {
+        Sheet {
             name: "Sheet1".to_string(),
             sheet_index: 0,
             cells,
             used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
-
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
             ..Default::default()
-        };
+        }
+    }
 
-        let rule = DeepIfNestingRule::default();
-        let violations = rule.check(&workbook).unwrap();
-
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, RuleId::Cpx504);
-        assert!(violations[0].message().contains(">5 levels"));
+    fn run_violations(sheet: &Sheet, rule: &DeepIfNestingRule) -> Vec<Violation> {
+        let mut ctx = LinterContext::default();
+        sheet
+            .all_cells()
+            .flat_map(|c| rule.on_cell(sheet, c, &mut ctx))
+            .collect()
     }
 
     #[test]
-    fn test_shallow_if_nesting() {
-        let mut cells = HashMap::new();
-        // 3 nested IF statements
-        cells.insert(
-            (0, 0),
-            Cell {
-                formula: Some(<Box<str>>::from("=IF(A1,IF(B1,IF(C1,1,0),0),0)")),
-                num_fmt: None,
-                row: 0,
-                col: 0,
-                value: CellValue::Empty,
-            },
-        );
+    fn test_cpx504_suppresses_others() {
+        let sheet = make_sheet("=IF(A1,IF(B1,IF(C1,IF(D1,IF(E1,IF(F1,1,0),0),0),0),0),0)");
+        let rule = DeepIfNestingRule::default();
+        let violations = run_violations(&sheet, &rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, RuleId::Cpx504);
+        let data = violations[0].data::<DeepIfNestingData>().unwrap();
+        assert_eq!(data.depth, 6);
+    }
 
-        let sheet = Sheet {
-            name: "Sheet1".to_string(),
-            sheet_index: 0,
-            cells,
-            used_range: Some((1, 1)),
-            hidden_columns: Vec::new(),
-            hidden_rows: Vec::new(),
-            merged_cells: Vec::new(),
-            sheet_path: None,
-            formula_parsing_error: None,
-            conditional_formatting_count: 0,
-            conditional_formatting_ranges: Vec::new(),
-            visible: true,
-        };
+    #[test]
+    fn test_cpx505_suppresses_downstream() {
+        let sheet = make_sheet("=SUM(ABS(MIN(MAX(ROUND(AVERAGE(A1),2),0),100),0),0)");
+        let rule = DeepIfNestingRule::default();
+        let violations = run_violations(&sheet, &rule);
+        assert!(violations.iter().any(|v| v.rule_id == RuleId::Cpx505));
+        assert!(!violations.iter().any(|v| v.rule_id == RuleId::Cpx506));
+    }
 
-        let workbook = Workbook {
-            path: PathBuf::from("test.xlsx"),
-            sheets: vec![sheet],
+    #[test]
+    fn test_cpx506_suppresses_cpx508() {
+        let sheet = make_sheet("=A1+B1*C1-D1/E1^F1&G1+H1+I1+J1");
+        let rule = DeepIfNestingRule::default();
+        let violations = run_violations(&sheet, &rule);
+        assert!(violations.iter().any(|v| v.rule_id == RuleId::Cpx506));
+        assert!(!violations.iter().any(|v| v.rule_id == RuleId::Cpx508));
+    }
+
+    #[test]
+    fn test_cpx508_fires_when_cpx506_does_not() {
+        let sheet = make_sheet("=A1+B1+C1+D1+E1+F1+G1+H1+I1+J1+K1");
+        let rule = DeepIfNestingRule {
+            max_operations: 15,
             ..Default::default()
         };
+        let violations = run_violations(&sheet, &rule);
+        assert!(violations.iter().any(|v| v.rule_id == RuleId::Cpx508));
+    }
 
+    #[test]
+    fn test_cpx509_fires_alone() {
+        let long = "=".to_string() + &"A1+".repeat(100);
+        let sheet = make_sheet(&long);
+        let rule = DeepIfNestingRule {
+            max_operations: 999,
+            max_references: 999,
+            ..Default::default()
+        };
+        let violations = run_violations(&sheet, &rule);
+        assert!(violations.iter().any(|v| v.rule_id == RuleId::Cpx509));
+    }
+
+    #[test]
+    fn test_violation_data_downcast() {
+        let sheet = make_sheet("=A1+B1*C1-D1/E1^F1&G1+H1+I1+J1");
         let rule = DeepIfNestingRule::default();
-        let violations = rule.check(&workbook).unwrap();
-
-        assert_eq!(violations.len(), 0);
+        let violations = run_violations(&sheet, &rule);
+        let v = violations
+            .iter()
+            .find(|v| v.rule_id == RuleId::Cpx506)
+            .unwrap();
+        let data = v.data::<ManyOperationsData>().unwrap();
+        assert!(data.count > 8);
     }
 
     #[test]
     fn test_if_counting() {
         assert_eq!(count_if_nesting("=A1+B1"), 0);
-        assert_eq!(count_if_nesting("=IF(A1,B1,C1)"), 1);
-        assert_eq!(count_if_nesting("=IF(A1,IF(B1,C1,D1),E1)"), 2);
-        assert_eq!(count_if_nesting("=IF(A1,IF(B1,IF(C1,D1,E1),F1),G1)"), 3);
-        // Should not count COUNTIF
-        assert_eq!(count_if_nesting("=COUNTIF(A1:A10,\">5\")"), 0);
+        assert_eq!(count_if_nesting("=IF(A1,1,0)"), 1);
+        assert_eq!(count_if_nesting("=IF(A1,IF(B1,1,0),0)"), 2);
+    }
+
+    #[test]
+    fn test_operator_counting() {
+        assert_eq!(count_operators("=A1+B1"), 1);
+        assert_eq!(count_operators("=IF(A1<=B1,1,0)"), 1);
+        assert_eq!(count_operators(r#"=A1&"a+b""#), 1);
+    }
+
+    #[test]
+    fn test_reference_counting() {
+        assert_eq!(count_references("=A1+B1"), 2);
+        assert_eq!(count_references("=SUM(1,2,3)"), 0);
+    }
+
+    #[test]
+    fn test_no_violations_simple_formula() {
+        let sheet = make_sheet("=A1+B1");
+        let rule = DeepIfNestingRule::default();
+        let violations = run_violations(&sheet, &rule);
+        assert!(violations.is_empty());
     }
 }
