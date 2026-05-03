@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 30
+      semver-major-days: 45
+      semver-minor-days: 30
+      semver-patch-days: 15
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+    reviewers:
+      - "cosmoscalibur"

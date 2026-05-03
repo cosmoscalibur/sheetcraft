@@ -1,0 +1,31 @@
+# Documentation Index
+
+This directory serves as the knowledge base for the SheetRS Suite. For
+getting-started instructions, see the root [README.md](../README.md).
+
+## Architecture & Design
+
+- [Architecture](../ARCHITECTURE.md) — workspace structure, module layout,
+  design principles (format-agnostic rules, streaming readers, rayon
+  parallelism).
+- [Coding Patterns](coding-patterns.md) — conventions, naming, SoC principle,
+  Rule/Walker trait patterns, CLI and library guidelines.
+
+## Analysis & Profiling
+
+- [Comparative Report](../sheetlint/comparative_report.md) — rule comparison
+  with PerfectXL Risk Finder and ExceLint.
+- [Profiling](../sheetlint/docs/PROFILING.md) — phase breakdown, per-rule
+  timing, traversal pattern analysis.
+- [Benchmarks](../scripts/README.md) — benchmark scripts and historical
+  performance data.
+
+## Testing
+
+- [Test Assets](../tests/README.md) — test file descriptions, usage patterns,
+  known limitations.
+
+## WASM Demo
+
+- [SheetRS WASM Demo](index.html) — browser-based demo using the sheetrs-wasm
+  crate. Supports lint and stats tools on XLSX/ODS files.

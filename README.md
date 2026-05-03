@@ -11,11 +11,13 @@ The suite consists of three specialized CLI tools:
 - **sheetcli**: General-purpose spreadsheet operations (convert, modify,
   repair).
 
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) ≥ 1.85 (edition 2024)
+
 ## Installation
 
 ### From Source
-
-Requires [Rust](https://www.rust-lang.org/tools/install) (latest stable).
 
 ```bash
 # Clone the repository
@@ -26,6 +28,39 @@ cd sheetrs
 cargo install --path sheetlint
 cargo install --path sheetstats
 cargo install --path sheetcli
+```
+
+## Development
+
+```bash
+# Build the workspace
+cargo build
+
+# Run all tests
+cargo test
+
+# Lint
+cargo clippy -- -D warnings
+
+# Format check
+cargo fmt --check
+```
+
+No environment variables are required. Configuration is via `sheetlint.toml`.
+
+## Project Structure
+
+```text
+sheetrs/
+├── sheetrs/        # Core library (parsers, rules, config, writer)
+├── sheetlint/      # Linter CLI
+├── sheetstats/     # Statistics CLI
+├── sheetcli/       # Manipulation CLI
+├── sheetrs-wasm/   # WASM bindings for browser use
+├── docs/           # Documentation index + WASM demo
+├── tests/          # Shared test assets (minimal_test.xlsx/.ods)
+├── scripts/        # Benchmark scripts
+└── Cargo.toml      # Workspace configuration
 ```
 
 ## Tools Overview
@@ -108,10 +143,13 @@ sheetcli input.xlsx --remove-ranges "OldRange" --output cleaned.xlsx
 - **Performance Review**: Continuous optimization for large workbooks (>1M
   cells).
 
-## Architecture
+## Documentation
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed technical breakdown of the
-`sheetrs` library and the CLI tool implementations.
+- [Architecture](ARCHITECTURE.md) — technical breakdown of the library and CLI
+  tools.
+- [Documentation Index](docs/README.md) — coding patterns, profiling, analysis,
+  and WASM demo.
+- [Contributing](CONTRIBUTING.md) — development setup, testing, and PR process.
 
 ## License
 

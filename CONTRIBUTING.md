@@ -1,0 +1,79 @@
+# Contributing to SheetRS
+
+Thank you for your interest in contributing to the SheetRS Suite.
+
+## Development Setup
+
+**Prerequisites**: Rust ≥ 1.85 (edition 2024).
+
+```bash
+git clone https://github.com/cosmoscalibur/sheetrs.git
+cd sheetrs
+cargo build
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests (debug mode — safe when not all rules are enabled)
+cargo test
+
+# Run tests in release mode (recommended when all rules are enabled)
+cargo test --release
+```
+
+### ODS/XLSX Parity
+
+Feature and behavior parity between ODS and XLSX formats is a requirement. Any
+difference detected should be considered a potential bug.
+
+Changes should be tested with `tests/minimal_test.ods` and
+`tests/minimal_test.xlsx` to verify parity. See the
+[Test Assets](tests/README.md) documentation for details.
+
+### Test Patterns
+
+- Use `include_bytes!` for unit tests to avoid I/O overhead.
+- Use file paths for integration tests.
+- Create both positive (expected behavior) and negative (error handling, edge
+  cases) test cases.
+
+## Code Style
+
+Run these checks before submitting:
+
+```bash
+cargo fmt --check
+cargo clippy -- -D warnings
+```
+
+See [docs/coding-patterns.md](docs/coding-patterns.md) for architecture
+conventions, naming patterns, and domain-specific guidelines.
+
+## Changelog Fragments
+
+Each PR should include a changelog fragment in `changelog.d/`. Create a file
+named `<PR-number>.<type>.md` where `<type>` is one of:
+
+- `added` — new features
+- `changed` — changes to existing functionality
+- `fixed` — bug fixes
+- `removed` — removed features
+
+Example: `changelog.d/42.added.md`
+
+```text
+Add CALC203 rule for detecting double operators in formulas.
+```
+
+Fragments are consolidated into `CHANGELOG.md` before each release.
+
+## Pull Request Process
+
+1. Fork the repository and create a feature branch.
+2. Make your changes following the coding patterns.
+3. Ensure all tests pass with parity check.
+4. Add a changelog fragment.
+5. Submit a PR using the PR template.
