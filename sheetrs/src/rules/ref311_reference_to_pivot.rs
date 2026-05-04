@@ -2,15 +2,13 @@
 //!
 //! Description: Detects direct cell-based references to pivot table data instead of using GETPIVOTDATA.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies direct references to pivot table data
 pub struct ReferenceToPivotRule;
 
-impl LinterRule for ReferenceToPivotRule {
+impl WalkerRule for ReferenceToPivotRule {
     fn id(&self) -> RuleId {
         RuleId::Ref311
     }
@@ -21,10 +19,5 @@ impl LinterRule for ReferenceToPivotRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Reference
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

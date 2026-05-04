@@ -2,12 +2,11 @@
 //!
 //! Description: Merged cells cause issues with sorting, filtering, and structural integrity.
 
-use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
-use crate::reader::{Sheet, Workbook};
+use super::{LinterContext, RuleCategory, WalkerRule};
+use crate::reader::Sheet;
 use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
-use anyhow::Result;
 
 /// Rule that detects merged cells
 pub struct MergedCellsRule;
@@ -29,38 +28,6 @@ impl ViolationData for MergedCellsData {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-impl LinterRule for MergedCellsRule {
-    fn id(&self) -> RuleId {
-        RuleId::Cpx502
-    }
-
-    fn name(&self) -> &str {
-        "Merged Cells"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::Complexity
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-
-        for sheet in &workbook.sheets {
-            for &(start_row, start_col, end_row, end_col) in &sheet.merged_cells {
-                let range_str = format_merged_range(start_row, start_col, end_row, end_col);
-                violations.push(Violation::new(
-                    RuleId::Cpx502,
-                    ViolationScope::Sheet(sheet.sheet_index),
-                    format!("Merged cells in range: {}", range_str),
-                    Severity::Warning,
-                ));
-            }
-        }
-
-        Ok(violations)
     }
 }
 
@@ -95,17 +62,12 @@ impl WalkerRule for MergedCellsRule {
     }
 }
 
-/// Format a merged cell range
-fn format_merged_range(start_row: u32, start_col: u32, end_row: u32, end_col: u32) -> String {
-    let start = CellReference::new(start_row, start_col);
-    let end = CellReference::new(end_row, end_col);
-    format!("{}:{}", start, end)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::Workbook;
     use crate::reader::workbook::Sheet;
+    use crate::rules::walker::WorkbookWalker;
     use std::path::PathBuf;
 
     #[test]
@@ -124,7 +86,9 @@ mod tests {
         };
 
         let rule = MergedCellsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rules: Vec<Box<dyn WalkerRule>> = vec![Box::new(rule)];
+        let walker = WorkbookWalker::new(&workbook, rules);
+        let violations = walker.walk();
 
         assert_eq!(violations.len(), 2);
         assert_eq!(violations[0].rule_id, RuleId::Cpx502);
@@ -144,7 +108,9 @@ mod tests {
         };
 
         let rule = MergedCellsRule;
-        let violations = rule.check(&workbook).unwrap();
+        let rules: Vec<Box<dyn WalkerRule>> = vec![Box::new(rule)];
+        let walker = WorkbookWalker::new(&workbook, rules);
+        let violations = walker.walk();
 
         assert_eq!(violations.len(), 0);
     }

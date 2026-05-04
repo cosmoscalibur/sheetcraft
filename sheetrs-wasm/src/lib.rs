@@ -62,10 +62,10 @@ pub fn lint_workbook(
         .map_err(|e| JsValue::from_str(&format!("Linter error: {}", e)))?;
 
     // Create a map of rule_id -> rule_name for better output
-    let rules = registry::create_all_rules(&config);
-    let rule_names: HashMap<String, String> = rules
+    let metadata = registry::get_all_rule_metadata(&config);
+    let rule_names: HashMap<String, String> = metadata
         .iter()
-        .map(|r| (r.id().to_string(), r.name().to_string()))
+        .map(|m| (m.id.to_string(), m.name.clone()))
         .collect();
 
     Ok(format_violations_human(&violations, &rule_names, &workbook))

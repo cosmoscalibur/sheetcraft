@@ -530,11 +530,11 @@ pub trait ViolationData: fmt::Debug + Send + Sync {
 
 /// Internal storage for violation messages.
 ///
-/// Supports two paths: legacy pre-formatted strings (used by [`LinterRule`]
-/// implementations) and deferred data (used by [`WalkerRule`] implementations).
+/// Supports two paths: pre-formatted strings and deferred data
+/// (used by rules implementing [`ViolationData`]).
 #[derive(Debug, Clone)]
 enum ViolationMessageInner {
-    /// Pre-formatted message string (legacy `LinterRule` path).
+    /// Pre-formatted message string.
     Legacy(String),
     /// Compact incident data with deferred formatting (walker path).
     Data(Arc<dyn ViolationData>),
@@ -556,8 +556,8 @@ pub struct Violation {
 impl Violation {
     /// Creates a new violation with a pre-formatted message string.
     ///
-    /// Used by legacy [`LinterRule`] implementations. Walker rules should
-    /// prefer [`with_data`](Violation::with_data).
+    /// Prefer [`with_data`](Violation::with_data) for compact, deferred
+    /// formatting when a [`ViolationData`] struct is available.
     pub fn new(
         rule_id: RuleId,
         scope: ViolationScope,

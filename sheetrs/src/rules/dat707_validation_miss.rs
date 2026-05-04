@@ -2,15 +2,13 @@
 //!
 //! Description: Flags data points violating defined spreadsheet input constraints.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies validation failures
 pub struct ValidationMissRule;
 
-impl LinterRule for ValidationMissRule {
+impl WalkerRule for ValidationMissRule {
     fn id(&self) -> RuleId {
         RuleId::Data707
     }
@@ -21,10 +19,5 @@ impl LinterRule for ValidationMissRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Data
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

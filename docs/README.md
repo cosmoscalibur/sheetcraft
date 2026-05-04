@@ -9,7 +9,7 @@ getting-started instructions, see the root [README.md](../README.md).
   design principles (format-agnostic rules, streaming readers, rayon
   parallelism).
 - [Coding Patterns](coding-patterns.md) — conventions, naming, SoC principle,
-  Rule/Walker trait patterns, CLI and library guidelines.
+  WalkerRule trait pattern, CLI and library guidelines.
 
 ## Analysis & Profiling
 

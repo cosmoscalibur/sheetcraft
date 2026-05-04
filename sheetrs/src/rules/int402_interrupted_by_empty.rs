@@ -2,15 +2,13 @@
 //!
 //! Description: Identifies empty cells that break a consistent formula pattern in a row or column.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies formulas interrupted by empty cells
 pub struct InterruptedByEmptyRule;
 
-impl LinterRule for InterruptedByEmptyRule {
+impl WalkerRule for InterruptedByEmptyRule {
     fn id(&self) -> RuleId {
         RuleId::Int402
     }
@@ -21,10 +19,5 @@ impl LinterRule for InterruptedByEmptyRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Interruptions
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

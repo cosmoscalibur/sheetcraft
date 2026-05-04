@@ -2,15 +2,13 @@
 //!
 //! Description: Identifies functions superseded by modern alternatives (e.g., CONCATENATE vs CONCAT).
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies deprecated functions
 pub struct DeprecatedFuncRule;
 
-impl LinterRule for DeprecatedFuncRule {
+impl WalkerRule for DeprecatedFuncRule {
     fn id(&self) -> RuleId {
         RuleId::Vul606
     }
@@ -21,10 +19,5 @@ impl LinterRule for DeprecatedFuncRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Vulnerability
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

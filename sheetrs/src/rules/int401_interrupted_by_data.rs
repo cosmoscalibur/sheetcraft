@@ -2,15 +2,13 @@
 //!
 //! Description: Detects data entries that break a consistent formula pattern in a row or column.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies formulas interrupted by raw data
 pub struct InterruptedByDataRule;
 
-impl LinterRule for InterruptedByDataRule {
+impl WalkerRule for InterruptedByDataRule {
     fn id(&self) -> RuleId {
         RuleId::Int401
     }
@@ -21,10 +19,5 @@ impl LinterRule for InterruptedByDataRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Interruptions
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

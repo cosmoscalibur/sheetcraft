@@ -2,9 +2,9 @@
 //!
 //! Description: Detects Excel functions that are susceptible to generating errors (currently focuses on VLOOKUP/HLOOKUP).
 
-use super::{LinterRule, RuleCategory};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
-use crate::reader::Workbook;
+use crate::reader::{Cell, Sheet};
 use crate::violation::{RuleId, Severity, Violation, ViolationScope};
 
 /// Rule that detects error-prone functions like VLOOKUP and HLOOKUP.
@@ -16,7 +16,7 @@ impl ErrorProneFunctionsRule {
     }
 }
 
-impl LinterRule for ErrorProneFunctionsRule {
+impl WalkerRule for ErrorProneFunctionsRule {
     fn id(&self) -> RuleId {
         RuleId::Vul604
     }
@@ -29,33 +29,28 @@ impl LinterRule for ErrorProneFunctionsRule {
         RuleCategory::Vulnerability
     }
 
-    fn check(&self, workbook: &Workbook) -> anyhow::Result<Vec<Violation>> {
+    fn on_cell(&self, sheet: &Sheet, cell: &Cell, _ctx: &mut LinterContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        for sheet in &workbook.sheets {
-            for ((row, col), cell) in &sheet.cells {
-                if let Some(formula) = cell.as_formula() {
-                    let upper_formula = formula.to_uppercase();
-                    if upper_formula.contains("VLOOKUP(") || upper_formula.contains("HLOOKUP(") {
-                        violations.push(Violation::new(
-                            RuleId::Vul604,
-                            ViolationScope::Cell(
-                                sheet.sheet_index,
-                                crate::violation::CellReference {
-                                    row: *row,
-                                    col: *col,
-                                },
-                            ),
-                            "Avoid using VLOOKUP/HLOOKUP. Use XLOOKUP or INDEX/MATCH instead."
-                                .to_string(),
-                            Severity::Warning,
-                        ));
-                    }
-                }
+        if let Some(formula) = cell.as_formula() {
+            let upper_formula = formula.to_uppercase();
+            if upper_formula.contains("VLOOKUP(") || upper_formula.contains("HLOOKUP(") {
+                violations.push(Violation::new(
+                    RuleId::Vul604,
+                    ViolationScope::Cell(
+                        sheet.sheet_index,
+                        crate::violation::CellReference {
+                            row: cell.row,
+                            col: cell.col,
+                        },
+                    ),
+                    "Avoid using VLOOKUP/HLOOKUP. Use XLOOKUP or INDEX/MATCH instead.".to_string(),
+                    Severity::Warning,
+                ));
             }
         }
 
-        Ok(violations)
+        violations
     }
 }
 
@@ -63,7 +58,8 @@ impl LinterRule for ErrorProneFunctionsRule {
 mod tests {
     use super::*;
     use crate::reader::workbook::CellValue;
-    use crate::reader::{Cell, Sheet};
+    use crate::reader::{Cell, Sheet, Workbook};
+    use crate::rules::walker::WorkbookWalker;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -124,8 +120,9 @@ mod tests {
 
         let config = LinterConfig::default();
         let rule = ErrorProneFunctionsRule::new(&config);
-
-        let violations = rule.check(&workbook).unwrap();
+        let rules: Vec<Box<dyn WalkerRule>> = vec![Box::new(rule)];
+        let walker = WorkbookWalker::new(&workbook, rules);
+        let violations = walker.walk();
 
         assert_eq!(violations.len(), 2);
     }
