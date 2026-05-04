@@ -80,69 +80,39 @@ fn parse_ods_date(date_str: &str) -> Option<f64> {
     let month = date_components[1].parse::<u32>().ok()?;
     let day = date_components[2].parse::<u32>().ok()?;
 
-    // Simple days count from 1899-12-30
-    // Excel epoch: 1899-12-30 = 0.
-    // 1900-01-01 = 2 (Excel bug: 1900 is leap year).
+    if !(1..=12).contains(&month) || day == 0 {
+        return None;
+    }
 
-    // We can use a simplified algorithm since we likely deal with modern dates
-    // Algorithm to convert YMD to total days since 0000-03-01
-    // But easier to just count days.
+    // O(1) conversion from (year, month, day) to a serial date using correct
+    // Gregorian counting (no Excel 1900 leap year bug).
+    //
+    // ODS stores dates as ISO 8601 strings and LibreOffice uses correct
+    // calendar arithmetic. Unlike XLSX (which inherits Excel's bug treating
+    // 1900 as a leap year), ODS serial numbers reflect the real calendar.
+    //
+    // Strategy: compute total days from a reference point using closed-form
+    // arithmetic. 1900-01-01 = serial 1.
+
+    // Cumulative days before each month in a non-leap year (index 1 = Jan).
+    const CUMULATIVE_DAYS: [i32; 13] = [0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 
     let is_leap = |y: i32| (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
 
-    let days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    // Total days from year 0 to the start of `y` (Jan 1 of year y).
+    // Leap year corrections use (y-1) to count leap years in [0, y-1] only;
+    // using y would erroneously include year y's own leap day.
+    let days_before_year = |y: i32| -> i32 { 365 * y + (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400 };
 
-    let mut total_days = 0;
+    let leap_feb = if month > 2 && is_leap(year) { 1 } else { 0 };
+    let absolute_days =
+        days_before_year(year) + CUMULATIVE_DAYS[month as usize] + leap_feb + day as i32;
 
-    // Years
-    for y in 1900..year {
-        total_days += if is_leap(y) { 366 } else { 365 };
-    }
+    // serial = absolute_days - days_before_year(1900).
+    // This gives 1900-01-01 = 1.
+    let total_days = absolute_days - days_before_year(1900);
 
-    // Months
-    for m in 1..month {
-        if m == 2 && is_leap(year) {
-            total_days += 29;
-        } else {
-            total_days += days_in_month[m as usize];
-        }
-    }
-
-    // Days
-    total_days += day as i32;
-
-    // Adjust for Excel epoch (1900-01-01 is day 1, but we start counting from 1900-01-01 as day 1 in this loop?)
-    // Loop starts 1900.
-    // if date is 1900-01-01: loop 0, month 0, day 1. total = 1.
-    // Excel 1900-01-01 is 2? No, 1. (Actually 1900-01-01 is 1.0).
-    // Excel thinks 1900-02-29 exists (day 60).
-
-    // If our date is > 1900-02-28, we need to ADD 1 to match Excel's bug.
-    // Unless ODS date is pre-1900, which is rare.
-
-    // Let's verify:
-    // 1999-09-30 should be 36433.
-    // Calc:
-    // Years 1900..1999 (99 years).
-    // Leaps: 1904, 08, 12, ... 96. (96-4)/4 + 1 = 24 leap years.
-    // 99 * 365 + 24 = 36135 + 24 = 36159.
-    // Months in 1999 (Jan-Aug): 31+28+31+30+31+30+31+31 = 243.
-    // Days: 30.
-    // Total = 36159 + 243 + 30 = 36432.
-    // Target 36433.
-    // Why diff 1? Because Excel has extra day (Feb 29 1900).
-    // So we add 1 offset + 1 (starting index?).
-
-    // Actually, "1900-01-01" in my loop gives 1. In Excel it is 1.
-    // "1900-02-28" loop: 31 + 28 = 59. Excel: 59.
-    // "1900-03-01" loop: 31 + 28 + 1 = 60. Excel: 61 (60 is 2/29).
-
-    // So if total_days > 59, add 1.
-    if total_days > 59 {
-        total_days += 1;
-    }
-
-    // Time
+    // Time fraction
     let mut time_fraction = 0.0;
     if !time_part.is_empty() {
         // HH:MM:SS or HH:MM:SS.mmm
@@ -159,11 +129,6 @@ fn parse_ods_date(date_str: &str) -> Option<f64> {
             time_fraction = (h * 3600.0 + m * 60.0 + s) / 86400.0;
         }
     }
-
-    // Excel starts from Dec 30 1899?
-    // My loop started Jan 1 1900 as 1.
-    // This matches Excel (1 = 1900-01-01).
-    // So should be fine.
 
     Some(total_days as f64 + time_fraction)
 }
@@ -2089,6 +2054,43 @@ fn calculate_used_range(cells: &HashMap<(u32, u32), Cell>) -> Option<(u32, u32)>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_ods_date_known_serials() {
+        // ODS uses correct Gregorian counting (no Excel 1900 leap year bug).
+        // 1900-01-01 → serial 1
+        assert_eq!(parse_ods_date("1900-01-01"), Some(1.0));
+        // 1900-02-28 → serial 59
+        assert_eq!(parse_ods_date("1900-02-28"), Some(59.0));
+        // 1900-03-01 → serial 60 (correct: no phantom Feb 29)
+        assert_eq!(parse_ods_date("1900-03-01"), Some(60.0));
+        // Leap year dates (regression: formula must not double-count year's own leap day)
+        assert_eq!(parse_ods_date("1904-01-01"), Some(1461.0));
+        assert_eq!(parse_ods_date("2000-01-01"), Some(36525.0));
+        assert_eq!(parse_ods_date("2024-01-01"), Some(45291.0));
+        assert_eq!(parse_ods_date("2024-07-04"), Some(45476.0));
+        // Non-leap year dates
+        assert_eq!(parse_ods_date("1999-09-30"), Some(36432.0));
+        assert_eq!(parse_ods_date("2025-05-03"), Some(45779.0));
+    }
+
+    #[test]
+    fn test_parse_ods_date_with_time() {
+        // 12:00:00 is exactly half a day
+        assert_eq!(parse_ods_date("1900-01-01T12:00:00"), Some(1.5));
+        // 06:00:00 is a quarter
+        assert_eq!(parse_ods_date("1900-01-01T06:00:00"), Some(1.25));
+    }
+
+    #[test]
+    fn test_parse_ods_date_invalid() {
+        assert_eq!(parse_ods_date("not-a-date"), None);
+        assert_eq!(parse_ods_date("2025-13"), None);
+        // Out-of-range month/day must return None, not panic
+        assert_eq!(parse_ods_date("2025-13-01"), None);
+        assert_eq!(parse_ods_date("2025-00-01"), None);
+        assert_eq!(parse_ods_date("2025-01-00"), None);
+    }
 
     #[test]
     fn test_normalize_ods_reference_basic() {

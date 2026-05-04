@@ -179,11 +179,26 @@ mod date_format_parity_tests {
     use super::*;
     use std::io::Cursor;
 
+    /// Normalize a serial date to correct Gregorian counting.
+    ///
+    /// XLSX serial numbers include the Excel 1900 leap year bug: serial 60 is
+    /// the non-existent 1900-02-29, so every date after 1900-02-28 is off by
+    /// +1 compared to correct counting.  ODS serial numbers already use correct
+    /// counting and need no adjustment.
+    fn normalize_serial(serial: f64, has_excel_bug: bool) -> f64 {
+        if has_excel_bug && serial > 60.0 {
+            serial - 1.0
+        } else {
+            serial
+        }
+    }
+
     #[test]
     fn test_date_format_parity_ods_xlsx() {
-        // Truth values for verification
+        // Truth values for verification (2023/08/01)
         const EXPECTED_D7_FORMAT: &str = "m/d/yyyy";
-        const EXPECTED_D7_VALUE: f64 = 45139.0; // 2023/08/01
+        const EXPECTED_D7_ODS_VALUE: f64 = 45138.0; // correct Gregorian serial
+        const EXPECTED_D7_XLSX_VALUE: f64 = 45139.0; // Excel serial (bug +1)
         const EXPECTED_D8_FORMAT: &str = "dd/mm/yy hh:mm";
 
         // Load ODS
@@ -231,9 +246,9 @@ mod date_format_parity_tests {
         );
         if let CellValue::Number(val) = d7_ods.value {
             assert!(
-                (val - EXPECTED_D7_VALUE).abs() < 0.1,
+                (val - EXPECTED_D7_ODS_VALUE).abs() < 0.1,
                 "ODS D7 value should be ~{}, got {}",
-                EXPECTED_D7_VALUE,
+                EXPECTED_D7_ODS_VALUE,
                 val
             );
         }
@@ -272,9 +287,9 @@ mod date_format_parity_tests {
         );
         if let CellValue::Number(val) = d7_xlsx.value {
             assert!(
-                (val - EXPECTED_D7_VALUE).abs() < 0.1,
+                (val - EXPECTED_D7_XLSX_VALUE).abs() < 0.1,
                 "XLSX D7 value should be ~{}, got {}",
-                EXPECTED_D7_VALUE,
+                EXPECTED_D7_XLSX_VALUE,
                 val
             );
         }
@@ -287,7 +302,7 @@ mod date_format_parity_tests {
             "XLSX D8 format should match truth value"
         );
 
-        // STEP 3: Verify ODS == XLSX parity
+        // STEP 3: Verify ODS == XLSX parity (same calendar date, not same serial)
 
         // Collect all date cells from both formats
         let mut date_cells_ods: Vec<_> = sheet_ods
@@ -313,7 +328,9 @@ mod date_format_parity_tests {
             date_cells_xlsx.len()
         );
 
-        // Verify each date cell matches (position, value, style)
+        // Verify each date cell represents the same calendar date.
+        // ODS uses correct Gregorian serials; XLSX includes the Excel 1900 bug.
+        // We normalize both to correct counting before comparing.
         for ((pos_ods, cell_ods), (pos_xlsx, cell_xlsx)) in
             date_cells_ods.iter().zip(date_cells_xlsx.iter())
         {
@@ -331,13 +348,15 @@ mod date_format_parity_tests {
                 );
             } else {
                 match (&cell_ods.value, &cell_xlsx.value) {
-                    (CellValue::Number(v1), CellValue::Number(v2)) => {
+                    (CellValue::Number(v_ods), CellValue::Number(v_xlsx)) => {
+                        let ods_normalized = normalize_serial(*v_ods, false);
+                        let xlsx_normalized = normalize_serial(*v_xlsx, true);
                         assert!(
-                            (v1 - v2).abs() < 0.0001,
-                            "Date values should match at {:?}: ODS={}, XLSX={}",
+                            (ods_normalized - xlsx_normalized).abs() < 0.0001,
+                            "Date cells should represent the same date at {:?}: ODS serial={}, XLSX serial={}",
                             pos_ods,
-                            v1,
-                            v2
+                            v_ods,
+                            v_xlsx
                         );
                     }
                     _ => {
