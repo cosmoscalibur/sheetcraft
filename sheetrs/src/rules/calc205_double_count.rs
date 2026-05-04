@@ -2,15 +2,13 @@
 //!
 //! Description: Flags redundant inclusion of specific cells in a summation logic.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies double count issues in formulas
 pub struct DoubleCountRule;
 
-impl LinterRule for DoubleCountRule {
+impl WalkerRule for DoubleCountRule {
     fn id(&self) -> RuleId {
         RuleId::Calc205
     }
@@ -21,10 +19,5 @@ impl LinterRule for DoubleCountRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Calculations
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }

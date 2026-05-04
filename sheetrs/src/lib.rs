@@ -13,7 +13,6 @@ use anyhow::Result;
 use std::path::Path;
 
 pub use config::LinterConfig;
-pub use rules::LinterRule;
 pub use violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
 
 use rules::WalkerRule;
@@ -22,7 +21,6 @@ use rules::walker::WorkbookWalker;
 /// Main linter interface
 pub struct Linter {
     config: LinterConfig,
-    rules: Vec<Box<dyn LinterRule>>,
     walker_rules: Vec<Box<dyn WalkerRule>>,
 }
 
@@ -34,11 +32,9 @@ impl Linter {
 
     /// Create a new linter with custom configuration
     pub fn with_config(config: LinterConfig) -> Self {
-        let rules = rules::registry::create_enabled_rules(&config);
         let walker_rules = rules::registry::create_enabled_walker_rules(&config);
         Self {
             config,
-            rules,
             walker_rules,
         }
     }
@@ -89,28 +85,6 @@ impl Linter {
             };
             if enabled {
                 violations.push(violation);
-            }
-        }
-
-        // Run legacy LinterRule checks
-        for rule in &self.rules {
-            let rule_violations = rule.check(workbook)?;
-
-            for violation in rule_violations {
-                let enabled = if let Some(sheet_idx) = violation.scope.sheet_index() {
-                    if let Some(sheet_name) = workbook.sheet_name_by_index(sheet_idx) {
-                        self.config
-                            .is_rule_enabled_for_sheet(violation.rule_id.as_str(), sheet_name)
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                };
-
-                if enabled {
-                    violations.push(violation);
-                }
             }
         }
 

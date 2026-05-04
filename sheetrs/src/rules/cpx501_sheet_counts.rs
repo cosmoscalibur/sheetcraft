@@ -2,11 +2,10 @@
 //!
 //! Description: Checks if the workbook has an excessive number of sheets, which complicates navigation.
 
-use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
 use crate::violation::{FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope};
-use anyhow::Result;
 
 /// Rule that checks if the workbook has an excessive number of sheets.
 pub struct ExcessiveSheetCountsRule {
@@ -46,39 +45,6 @@ impl Default for ExcessiveSheetCountsRule {
     }
 }
 
-impl LinterRule for ExcessiveSheetCountsRule {
-    fn id(&self) -> RuleId {
-        RuleId::Cpx501
-    }
-
-    fn name(&self) -> &str {
-        "Sheet Counts"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::Complexity
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-        let sheet_count = workbook.sheets.len() as u32;
-
-        if sheet_count > self.threshold {
-            violations.push(Violation::new(
-                RuleId::Cpx501,
-                ViolationScope::Book,
-                format!(
-                    "Workbook has {} sheets (threshold: {})",
-                    sheet_count, self.threshold
-                ),
-                Severity::Warning,
-            ));
-        }
-
-        Ok(violations)
-    }
-}
-
 impl WalkerRule for ExcessiveSheetCountsRule {
     fn id(&self) -> RuleId {
         RuleId::Cpx501
@@ -113,6 +79,7 @@ impl WalkerRule for ExcessiveSheetCountsRule {
 mod tests {
     use super::*;
     use crate::reader::workbook::Sheet;
+    use crate::rules::walker::WorkbookWalker;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -143,7 +110,9 @@ mod tests {
         };
 
         let rule = ExcessiveSheetCountsRule::default();
-        let violations = rule.check(&workbook).unwrap();
+        let rules: Vec<Box<dyn WalkerRule>> = vec![Box::new(rule)];
+        let walker = WorkbookWalker::new(&workbook, rules);
+        let violations = walker.walk();
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Cpx501);

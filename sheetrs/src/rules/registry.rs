@@ -75,12 +75,8 @@ pub fn get_all_valid_tokens() -> HashSet<String> {
         tokens.insert(prefix.to_string());
     }
 
-    // Rule IDs from both legacy and walker rules
+    // Rule IDs from walker rules
     let config = LinterConfig::default();
-    let rules = create_all_rules(&config);
-    for rule in rules {
-        tokens.insert(rule.id().to_string());
-    }
     let walker_rules = create_all_walker_rules(&config);
     for rule in walker_rules {
         tokens.insert(rule.id().to_string());
@@ -101,104 +97,21 @@ pub struct RuleMetadata {
     pub is_default: bool,
 }
 
-/// Collect metadata from all rules (LinterRule + WalkerRule).
-///
-/// Deduplicates by `RuleId` so dual-impl rules appear only once.
+/// Collect metadata from all rules.
 pub fn get_all_rule_metadata(config: &LinterConfig) -> Vec<RuleMetadata> {
-    let mut seen = HashSet::new();
-    let mut metadata = Vec::new();
-
-    // Walker rules first (preferred source for migrated rules)
-    for rule in create_all_walker_rules(config) {
-        if seen.insert(rule.id()) {
-            metadata.push(RuleMetadata {
-                id: rule.id(),
-                name: rule.name().to_string(),
-                category: rule.category(),
-                is_default: DEFAULT_ACTIVE_RULES.contains(&rule.id()),
-            });
-        }
-    }
-
-    // Legacy LinterRules (skipped if already present from walker)
-    for rule in create_all_rules(config) {
-        if seen.insert(rule.id()) {
-            metadata.push(RuleMetadata {
-                id: rule.id(),
-                name: rule.name().to_string(),
-                category: rule.category(),
-                is_default: DEFAULT_ACTIVE_RULES.contains(&rule.id()),
-            });
-        }
-    }
+    let mut metadata: Vec<RuleMetadata> = create_all_walker_rules(config)
+        .into_iter()
+        .map(|rule| RuleMetadata {
+            id: rule.id(),
+            name: rule.name().to_string(),
+            category: rule.category(),
+            is_default: DEFAULT_ACTIVE_RULES.contains(&rule.id()),
+        })
+        .collect();
 
     // Sort by rule ID string for stable ordering
     metadata.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
     metadata
-}
-
-/// Create all enabled rules based on configuration
-pub fn create_enabled_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
-    let all_rules = create_all_rules(config);
-
-    all_rules
-        .into_iter()
-        .filter(|rule| {
-            let is_enabled_in_config = config.is_rule_enabled(rule.id().as_str());
-
-            if config.global.enabled_rules.is_empty() {
-                DEFAULT_ACTIVE_RULES.contains(&rule.id()) && is_enabled_in_config
-            } else {
-                is_enabled_in_config
-            }
-        })
-        .collect()
-}
-
-/// Create instances of all available rules
-pub fn create_all_rules(config: &LinterConfig) -> Vec<Box<dyn LinterRule>> {
-    vec![
-        // Excel Errors (1xx)
-        // err101, err102, err103 moved to walker
-        // Unreliable Calculations (2xx)
-        // calc201, calc202 moved to walker
-        Box::new(calc203_double_operator::DoubleOperatorRule),
-        Box::new(calc204_approximate_lookup::ApproximateLookupRule),
-        Box::new(calc205_double_count::DoubleCountRule),
-        // Reference Issues (3xx)
-        // ref301, ref302, ref303, ref304, ref305 moved to walker
-        // ref306, ref307 moved to walker
-        Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
-        Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
-        Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
-        Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
-        // Formula Interruptions (4xx)
-        Box::new(int401_interrupted_by_data::InterruptedByDataRule),
-        Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
-        Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
-        // Complexity (5xx)
-        // cpx501 through cpx509 moved to walker
-        // Vulnerable Formulas (6xx)
-        // vul601, vul602, vul603 moved to walker
-        Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
-            config,
-        )),
-        Box::new(vul605_legacy_array::LegacyArrayRule),
-        Box::new(vul606_deprecated_func::DeprecatedFuncRule),
-        Box::new(vul607_unprotected::UnprotectedRule),
-        // Data Issues (7xx)
-        // dat701, dat702, dat703, dat704, dat705 moved to walker
-        Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
-        Box::new(dat707_validation_miss::ValidationMissRule),
-        // External References (8xx)
-        // ext801, ext802 moved to walker
-        // Hidden Information (9xx)
-        // hid901, hid902 moved to walker
-        // Files & Settings (10xx)
-        // file1001, file1002, file1003 moved to walker
-        // VBA Issues (11xx)
-        // vba1101 moved to walker
-    ]
 }
 
 /// Create instances of all available walker rules
@@ -212,47 +125,63 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         // ERR102/ERR103 after CALC202 so on_workbook_end reads circular_cells
         Box::new(err102_error_cells::ErrorCellsRule),
         Box::new(err103_ref_to_error::RefToErrorRule),
+        Box::new(calc203_double_operator::DoubleOperatorRule),
+        Box::new(calc204_approximate_lookup::ApproximateLookupRule),
+        Box::new(calc205_double_count::DoubleCountRule),
         // Reference Issues (3xx)
         Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
         Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
         Box::new(ref303_empty_sheets::EmptySheetsRule),
+        Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
+        Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         Box::new(ref306_unused_sheets::UnusedSheetsRule),
+        Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
+        Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
+        Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
+        Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
+        Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
+        // Formula Interruptions (4xx)
+        Box::new(int401_interrupted_by_data::InterruptedByDataRule),
+        Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
+        Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
         // Complexity (5xx)
         Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         Box::new(cpx502_merged_cells::MergedCellsRule),
-        // Data Issues (7xx)
-        Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
-        Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
-        Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
-        Box::new(dat704_long_text::LongTextCellRule::new(config)),
-        Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
-        // Complexity (5xx)
         Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
                 config,
             ),
         ),
-        // Vulnerability (6xx)
-        Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
-        Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
-        Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
-        // Reference (3xx)
-        Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
-        Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
-        Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
-        // Complexity (5xx)
         Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
         Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule),
         Box::new(cpx506_many_operations::ManyOperationsRule),
         Box::new(cpx507_multiple_sheet_ref::MultipleSheetRefRule::new(config)),
         Box::new(cpx508_many_references::ManyReferencesRule),
         Box::new(cpx509_long_formula::LongFormulaRule),
-        // Hidden Information (9xx)
-        Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
-        Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
+        // Vulnerable Formulas (6xx)
+        Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
+        Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
+        Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
+        Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
+            config,
+        )),
+        Box::new(vul605_legacy_array::LegacyArrayRule),
+        Box::new(vul606_deprecated_func::DeprecatedFuncRule),
+        Box::new(vul607_unprotected::UnprotectedRule),
+        // Data Issues (7xx)
+        Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
+        Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
+        Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
+        Box::new(dat704_long_text::LongTextCellRule::new(config)),
+        Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
+        Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
+        Box::new(dat707_validation_miss::ValidationMissRule),
         // External References (8xx)
         Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
         Box::new(ext802_web_urls::WebUrlsRule::new(config)),
+        // Hidden Information (9xx)
+        Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
+        Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
         // Files & Settings (10xx)
         Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
@@ -290,20 +219,25 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
             Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
         }
         RuleId::Calc202 => Box::new(calc202_circular_references::CircularReferenceRule::new()),
+        RuleId::Calc203 => Box::new(calc203_double_operator::DoubleOperatorRule),
+        RuleId::Calc204 => Box::new(calc204_approximate_lookup::ApproximateLookupRule),
+        RuleId::Calc205 => Box::new(calc205_double_count::DoubleCountRule),
         RuleId::Ref301 => Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
         RuleId::Ref302 => Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
         RuleId::Ref303 => Box::new(ref303_empty_sheets::EmptySheetsRule),
-        RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
         RuleId::Ref304 => Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
         RuleId::Ref305 => Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
+        RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
+        RuleId::Ref307 => Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
+        RuleId::Ref308 => Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
+        RuleId::Ref309 => Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
+        RuleId::Ref310 => Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
+        RuleId::Ref311 => Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
+        RuleId::Int401 => Box::new(int401_interrupted_by_data::InterruptedByDataRule),
+        RuleId::Int402 => Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
+        RuleId::Int403 => Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
-        RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
-        RuleId::Ext801 => Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
-        RuleId::Ext802 => Box::new(ext802_web_urls::WebUrlsRule::new(config)),
-        RuleId::Hid901 => Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
-        RuleId::Hid902 => Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
-        RuleId::Ref307 => Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
         RuleId::Cpx503 => Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
                 config,
@@ -318,15 +252,27 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Vul601 => Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
         RuleId::Vul602 => Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
         RuleId::Vul603 => Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
+        RuleId::Vul604 => Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
+            config,
+        )),
+        RuleId::Vul605 => Box::new(vul605_legacy_array::LegacyArrayRule),
+        RuleId::Vul606 => Box::new(vul606_deprecated_func::DeprecatedFuncRule),
+        RuleId::Vul607 => Box::new(vul607_unprotected::UnprotectedRule),
+        RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
         RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
         RuleId::Data703 => Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
         RuleId::Data704 => Box::new(dat704_long_text::LongTextCellRule::new(config)),
         RuleId::Data705 => Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
+        RuleId::Data706 => Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
+        RuleId::Data707 => Box::new(dat707_validation_miss::ValidationMissRule),
+        RuleId::Ext801 => Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
+        RuleId::Ext802 => Box::new(ext802_web_urls::WebUrlsRule::new(config)),
+        RuleId::Hid901 => Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
+        RuleId::Hid902 => Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
         RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
         RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
         RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
         RuleId::Vba1101 => Box::new(vba1101_has_macros::HasMacrosRule),
-        _ => panic!("Unknown walker rule: {:?}", rule.id()),
     }
 }
 
@@ -338,7 +284,6 @@ mod tests {
     fn test_prefix_activation() {
         let mut config = LinterConfig::default();
         config.global.enabled_rules.insert("ERR".to_string());
-        // ERR102 is now a walker rule
         let enabled = create_enabled_walker_rules(&config);
         assert!(enabled.iter().any(|r| r.id() == RuleId::Err102));
     }

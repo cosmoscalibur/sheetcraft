@@ -30,23 +30,26 @@ failure. Silent misconfiguration is not acceptable.
 
 ### The Rule Trait
 
-Each rule is a standalone struct implementing the `Rule` trait. Rules are
+Each rule is a standalone struct implementing the `WalkerRule` trait. Rules are
 registered in a central `Registry`.
 
-Categories: `ERR` (Errors), `SEC` (Security), `PERF` (Performance),
-`UX` (Usability), `SM` (Structure/Maintainability), `FORM` (Formula).
+Categories: `ERR` (Errors), `CALC` (Calculations), `REF` (References),
+`INT` (Interruptions), `CPX` (Complexity), `VUL` (Vulnerability),
+`DATA` (Data Issues), `EXT` (External), `HID` (Hidden), `FILE` (Files),
+`VBA` (Macros).
 
 ### The Walker Pattern
 
-Walker rules implement the `WalkerRule` trait for cell-by-cell traversal:
+All rules implement the `WalkerRule` trait, which provides lifecycle hooks
+for single-pass cell-by-cell traversal:
 
+- `on_workbook_start()` — called once before traversal begins.
+- `on_sheet_start()` — called at the start of each sheet.
 - `on_cell()` — called for each cell during the walk. Collect data into
   `LinterContext`.
+- `on_sheet_end()` — called at the end of each sheet.
 - `on_workbook_end()` — called after all cells are visited. Emit violations
   based on collected data.
-
-Use walkers when a rule needs cross-cell or cross-sheet analysis (e.g.,
-circular references, dependency graphs).
 
 ### Hierarchical Violations
 
@@ -92,7 +95,7 @@ The workspace uses [semantic versioning](https://semver.org/):
 The `sheetrs` library crate exports:
 
 - `reader` module — `Workbook` trait, format parsers
-- `rules` module — rule registry, `Rule` and `WalkerRule` traits
+- `rules` module — rule registry and `WalkerRule` trait
 - `config` module — TOML configuration loading
 - `writer` module — workbook modification utilities
 - `violation` module — violation types and formatting

@@ -25,9 +25,10 @@ The heart of the suite. It encapsulates all domain logic, file parsing, rule enf
   - `Workbook` trait defines the common interface for all formats.
 
 - **`rules`**: Implements the linting logic.
-  - Each rule is a standalone struct implementing the `Rule` trait.
+  - Each rule is a standalone struct implementing the `WalkerRule` trait.
+  - The `WorkbookWalker` executes all rules in a single pass over the workbook.
   - Rules are registered in a central `Registry`.
-  - Categories: `ERR` (Errors), `SEC` (Security), `PERF` (Performance), `UX` (Usability), `SM` (Structure/Maintainability), `FORM` (Formula).
+  - Categories: `ERR` (Errors), `CALC` (Calculations), `REF` (References), `INT` (Interruptions), `CPX` (Complexity), `VUL` (Vulnerability), `DATA` (Data Issues), `EXT` (External), `HID` (Hidden), `FILE` (Files), `VBA` (Macros).
 
 - **`config`**: Handles TOML configuration.
   - Hierarchical loading: Default -> Global Config -> Sheet Overrides.

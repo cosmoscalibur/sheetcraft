@@ -81,7 +81,6 @@ pub mod vba1101_has_macros;
 
 use crate::reader::{Cell, Sheet, Workbook};
 use crate::violation::{ExcelError, RuleId, Violation};
-use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 /// Type alias for cell dependency graph: (SheetIndex, Row, Col) -> Vec<(SheetIndex, Row, Col)>
@@ -137,21 +136,6 @@ pub trait WalkerRule: Send + Sync {
     fn on_workbook_end(&self, _workbook: &Workbook, _ctx: &mut LinterContext) -> Vec<Violation> {
         Vec::new()
     }
-}
-
-/// Trait that all linter rules must implement
-pub trait LinterRule: Send + Sync {
-    /// Unique rule identifier
-    fn id(&self) -> RuleId;
-
-    /// Human-readable rule name
-    fn name(&self) -> &str;
-
-    /// Rule category
-    fn category(&self) -> RuleCategory;
-
-    /// Check the workbook for violations
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>>;
 }
 
 /// Rule categories matching the comparative report sections

@@ -2,12 +2,11 @@
 //!
 //! Description: Detects recursive dependency loops that prevent successful calculation.
 
-use super::{LinterContext, LinterRule, RuleCategory, WalkerRule};
+use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::reader::{Cell, Sheet, Workbook};
 use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
-use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
@@ -81,96 +80,6 @@ impl ViolationData for CircularReferenceData {
     }
 }
 
-impl LinterRule for CircularReferenceRule {
-    fn id(&self) -> RuleId {
-        RuleId::Calc202
-    }
-
-    fn name(&self) -> &str {
-        "Circular Reference"
-    }
-
-    fn category(&self) -> RuleCategory {
-        RuleCategory::Calculations
-    }
-
-    fn check(&self, workbook: &Workbook) -> Result<Vec<Violation>> {
-        let mut violations = Vec::new();
-        // Build a name-to-index map for quick lookup
-        let name_to_index: HashMap<&str, u16> = workbook
-            .sheets
-            .iter()
-            .map(|s| (s.name.as_str(), s.sheet_index))
-            .collect();
-
-        // Global dependency graph: (SheetIndex, Row, Col) -> Vec<(SheetIndex, Row, Col)>
-        // Type alias to avoid clippy::type_complexity warning
-        type CellDependencyMap = HashMap<(u16, u32, u32), Vec<(u16, u32, u32)>>;
-        let mut dependencies: CellDependencyMap = HashMap::new();
-
-        // 1. Build the global dependency graph
-        for sheet in &workbook.sheets {
-            for cell in sheet.all_cells() {
-                if let Some(formula) = cell.as_formula() {
-                    let refs = extract_cell_references(
-                        formula,
-                        &self.cell_ref_pattern,
-                        sheet.sheet_index,
-                        &name_to_index,
-                    );
-                    dependencies.insert((sheet.sheet_index, cell.row, cell.col), refs);
-                }
-            }
-        }
-
-        // 2. Detect circular references using DFS on the global graph
-        let cycles = find_cycles(&dependencies);
-
-        // Build index-to-name map for violation messages
-        let index_to_name: HashMap<u16, &str> = workbook
-            .sheets
-            .iter()
-            .map(|s| (s.sheet_index, s.name.as_str()))
-            .collect();
-
-        let mut reported_cells = HashSet::new();
-
-        for cycle in cycles {
-            let is_duplicate = cycle.iter().any(|c| reported_cells.contains(c));
-
-            if !is_duplicate {
-                for cell in &cycle {
-                    reported_cells.insert(*cell);
-                }
-
-                // Format the cycle path including sheet names
-                let path_str: Vec<String> = cycle
-                    .iter()
-                    .map(|(idx, r, c)| {
-                        let sheet_name = index_to_name.get(idx).copied().unwrap_or("Unknown");
-                        format!("{}!{}", sheet_name, CellReference::new(*r, *c))
-                    })
-                    .collect();
-
-                let full_path = format!("{} -> {}", path_str.join(" -> "), path_str[0]);
-
-                // Report on the first cell
-                let (sheet_index, r, c) = &cycle[0];
-                let cell_ref = CellReference::new(*r, *c);
-
-                violations.push(Violation::new(
-                    RuleId::Calc202,
-                    ViolationScope::Cell(*sheet_index, cell_ref),
-                    format!("Circular reference detected: {}", full_path),
-                    Severity::Error,
-                ));
-            }
-        }
-
-        Ok(violations)
-    }
-}
-
 impl WalkerRule for CircularReferenceRule {
     fn id(&self) -> RuleId {
         RuleId::Calc202
@@ -186,7 +95,7 @@ impl WalkerRule for CircularReferenceRule {
 
     fn on_cell(&self, sheet: &Sheet, cell: &Cell, ctx: &mut LinterContext) -> Vec<Violation> {
         if let Some(formula) = cell.as_formula() {
-            let refs = extract_cell_references_walker(
+            let refs = extract_cell_references(
                 formula,
                 &self.cell_ref_pattern,
                 sheet.sheet_index,
@@ -239,8 +148,12 @@ impl WalkerRule for CircularReferenceRule {
     }
 }
 
-/// Extract cell references for walker rules (uses HashMap<String, u16>)
-fn extract_cell_references_walker(
+/// Extract cell references from a formula, resolving sheet names to indices.
+///
+/// Range references are represented by their corner cells (start and end) to prevent
+/// excessive memory usage with large spreadsheets. External workbook references are
+/// skipped since they cannot cause circular references within the current workbook.
+fn extract_cell_references(
     formula: &str,
     pattern: &Regex,
     current_sheet_index: u16,
@@ -286,76 +199,6 @@ fn extract_cell_references_walker(
                     references.push((sheet_index, end_row, end_col));
                 }
             } else {
-                references.push((sheet_index, start_row, start_col));
-            }
-        }
-    }
-
-    references
-}
-
-/// Extract cell references from a formula, resolving sheet names to indices.
-///
-/// Range references are represented by their corner cells (start and end) to prevent
-/// excessive memory usage with large spreadsheets. External workbook references are
-/// skipped since they cannot cause circular references within the current workbook.
-fn extract_cell_references(
-    formula: &str,
-    pattern: &Regex,
-    current_sheet_index: u16,
-    name_to_index: &HashMap<&str, u16>,
-) -> Vec<(u16, u32, u32)> {
-    let mut references = Vec::new();
-
-    for cap in pattern.captures_iter(formula) {
-        // Determine sheet index
-        // Group 1: Sheet name wrapper
-        // Group 2: Quoted content
-        // Group 3: Unquoted content
-        let sheet_index = if cap.get(1).is_some() {
-            if let Some(quoted) = cap.get(2) {
-                match name_to_index.get(quoted.as_str()).copied() {
-                    Some(idx) => idx,
-                    None => continue, // Skip external workbook references
-                }
-            } else if let Some(unquoted) = cap.get(3) {
-                match name_to_index.get(unquoted.as_str()).copied() {
-                    Some(idx) => idx,
-                    None => continue, // Skip external workbook references
-                }
-            } else {
-                // Fallback (shouldn't happen with valid regex)
-                current_sheet_index
-            }
-        } else {
-            current_sheet_index
-        };
-
-        // Group 4: Start Col (Alpha)
-        // Group 5: Start Row (Numeric)
-        if let (Some(col_match), Some(row_match)) = (cap.get(4), cap.get(5)) {
-            let col_str = col_match.as_str();
-            let row_str = row_match.as_str();
-
-            let (start_row, start_col) = match parse_components(row_str, col_str) {
-                Some(coords) => coords,
-                None => continue,
-            };
-
-            // Check for range end
-            // Group 6: End Col
-            // Group 7: End Row
-            if let (Some(end_col_match), Some(end_row_match)) = (cap.get(6), cap.get(7)) {
-                let end_col_str = end_col_match.as_str();
-                let end_row_str = end_row_match.as_str();
-
-                if let Some((end_row, end_col)) = parse_components(end_row_str, end_col_str) {
-                    // Only track corner cells to prevent memory issues
-                    references.push((sheet_index, start_row, start_col));
-                    references.push((sheet_index, end_row, end_col));
-                }
-            } else {
-                // Single cell reference
                 references.push((sheet_index, start_row, start_col));
             }
         }
@@ -466,6 +309,7 @@ fn find_cycles(dependencies: &HashMap<Node, Vec<Node>>) -> Vec<Vec<Node>> {
 mod tests {
     use super::*;
     use crate::reader::workbook::{Cell, CellValue, Sheet};
+    use crate::rules::walker::WorkbookWalker;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -485,6 +329,13 @@ mod tests {
         }
     }
 
+    fn run_rule(workbook: &Workbook) -> Vec<Violation> {
+        let rule = CircularReferenceRule::new();
+        let rules: Vec<Box<dyn WalkerRule>> = vec![Box::new(rule)];
+        let walker = WorkbookWalker::new(workbook, rules);
+        walker.walk()
+    }
+
     #[test]
     fn test_circular_reference_direct() {
         let mut cells = HashMap::new();
@@ -501,8 +352,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let violations = run_rule(&workbook);
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, RuleId::Calc202);
@@ -534,8 +384,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let violations = run_rule(&workbook);
 
         assert!(!violations.is_empty());
     }
@@ -569,8 +418,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let violations = run_rule(&workbook);
 
         // Should NOT detect cycle with non-expanding mode
         assert_eq!(violations.len(), 0);
@@ -603,8 +451,7 @@ mod tests {
         );
 
         let workbook = create_test_workbook("Sheet1", cells);
-        let rule = CircularReferenceRule::new();
-        let violations = rule.check(&workbook).unwrap();
+        let violations = run_rule(&workbook);
 
         // Cycle: A1 -> A3 -> A1
         assert_eq!(violations.len(), 1);

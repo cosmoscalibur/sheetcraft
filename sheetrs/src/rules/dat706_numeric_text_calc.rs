@@ -2,15 +2,13 @@
 //!
 //! Description: Identifies mathematical operations involving strings that look like numbers.
 
-use super::{LinterRule, RuleCategory};
-use crate::reader::Workbook;
-use crate::violation::{RuleId, Violation};
-use anyhow::Result;
+use super::{RuleCategory, WalkerRule};
+use crate::violation::RuleId;
 
 /// Rule that identifies numeric string calculations
 pub struct NumericTextCalcRule;
 
-impl LinterRule for NumericTextCalcRule {
+impl WalkerRule for NumericTextCalcRule {
     fn id(&self) -> RuleId {
         RuleId::Data706
     }
@@ -21,10 +19,5 @@ impl LinterRule for NumericTextCalcRule {
 
     fn category(&self) -> RuleCategory {
         RuleCategory::Data
-    }
-
-    fn check(&self, _workbook: &Workbook) -> Result<Vec<Violation>> {
-        // Placeholder implementation
-        Ok(Vec::new())
     }
 }
