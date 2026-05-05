@@ -11,6 +11,21 @@ use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
 use regex::Regex;
+use std::sync::LazyLock;
+
+/// Matches quoted strings (to strip before number extraction).
+static STRING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#""[^"]*""#).expect("CALC201 string regex must compile"));
+
+/// Matches external workbook references like `[1]`, `[2]`.
+static EXTERNAL_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[(\d+)\]").expect("CALC201 external ref regex must compile"));
+
+/// Matches numeric literals (integers and decimals).
+/// `\b` prevents matching digits inside cell references (e.g. "A1") or
+/// function names (e.g. "LOG10").
+static NUMBER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(\d+(\.\d+)?)\b").expect("CALC201 number regex must compile"));
 
 /// Rule that detects hardcoded numeric values in formulas.
 ///
@@ -19,24 +34,13 @@ use regex::Regex;
 /// per cell listing every unique hardcoded constant found.
 pub struct HardcodedValuesInFormulasRule {
     config: LinterConfig,
-    /// Regex to match quoted strings (to ignore them)
-    string_regex: Regex,
-    /// Regex to match external workbook references like `[1]`, `[2]`
-    external_ref_regex: Regex,
-    /// Regex to match numeric literals (integers and decimals)
-    number_regex: Regex,
 }
 
 impl HardcodedValuesInFormulasRule {
-    /// Create a new rule instance with pre-compiled regexes.
+    /// Create a new rule instance.
     pub fn new(config: &LinterConfig) -> Self {
         Self {
             config: config.clone(),
-            string_regex: Regex::new(r#""[^"]*""#).unwrap(),
-            external_ref_regex: Regex::new(r"\[(\d+)\]").unwrap(),
-            // Matches integers and decimals. \b prevents matching digits inside
-            // cell references (e.g. "A1") or function names (e.g. "LOG10").
-            number_regex: Regex::new(r"\b(\d+(\.\d+)?)\b").unwrap(),
         }
     }
 
@@ -84,18 +88,17 @@ impl HardcodedValuesInFormulasRule {
         ignore_pow10: bool,
     ) -> Vec<f64> {
         // Remove strings first
-        let formula_no_strings = self.string_regex.replace_all(formula, "");
+        let formula_no_strings = STRING_RE.replace_all(formula, "");
 
         // Collect positions of external workbook references to exclude
-        let excluded_ranges: Vec<(usize, usize)> = self
-            .external_ref_regex
+        let excluded_ranges: Vec<(usize, usize)> = EXTERNAL_REF_RE
             .captures_iter(&formula_no_strings)
             .filter_map(|cap| cap.get(0).map(|m| (m.start(), m.end())))
             .collect();
 
         let mut values = Vec::new();
 
-        for cap in self.number_regex.captures_iter(&formula_no_strings) {
+        for cap in NUMBER_RE.captures_iter(&formula_no_strings) {
             if let Some(match_str) = cap.get(1) {
                 let match_start = match_str.start();
                 let match_end = match_str.end();
