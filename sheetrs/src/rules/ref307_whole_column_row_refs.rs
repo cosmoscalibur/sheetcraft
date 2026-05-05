@@ -10,27 +10,29 @@ use crate::violation::{
 };
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
+
+/// Matches whole-column references (A:A, A:Z, etc.).
+static COLUMN_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b[A-Z]+:[A-Z]+\b").expect("REF307 column regex must compile"));
+
+/// Matches whole-row references (1:1, 1:100, etc.).
+static ROW_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b\d+:\d+\b").expect("REF307 row regex must compile"));
 
 /// Per-sheet cell collection: sheet_index → Vec<(row, col, is_column)>.
 type SheetCellMap = Mutex<HashMap<u16, Vec<(u32, u32, bool)>>>;
 
 /// Rule that detects whole-column (e.g., A:A) or whole-row (e.g., 1:1) references.
 pub struct WholeColumnRowRefsRule {
-    /// Regex pattern for whole column references (A:A, A:Z, etc.).
-    column_pattern: Regex,
-    /// Regex pattern for whole row references (1:1, 1:100, etc.).
-    row_pattern: Regex,
     /// Per-sheet collected cells.
     sheet_cells: SheetCellMap,
 }
 
 impl WholeColumnRowRefsRule {
-    /// Create a new instance with compiled regex.
+    /// Create a new instance.
     pub fn new() -> Self {
         Self {
-            column_pattern: Regex::new(r"\b[A-Z]+:[A-Z]+\b").unwrap(),
-            row_pattern: Regex::new(r"\b\d+:\d+\b").unwrap(),
             sheet_cells: Mutex::new(HashMap::new()),
         }
     }
@@ -99,8 +101,8 @@ impl WalkerRule for WholeColumnRowRefsRule {
         if let Some(formula) = cell.as_formula() {
             let formula_upper = formula.to_uppercase();
 
-            let has_column = self.column_pattern.is_match(&formula_upper);
-            let has_row = !has_column && self.row_pattern.is_match(&formula_upper);
+            let has_column = COLUMN_PATTERN.is_match(&formula_upper);
+            let has_row = !has_column && ROW_PATTERN.is_match(&formula_upper);
 
             if has_column || has_row {
                 let mut map = self.sheet_cells.lock().unwrap();

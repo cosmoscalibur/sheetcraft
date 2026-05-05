@@ -9,6 +9,19 @@ use crate::violation::{
 };
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
+
+/// Compiled cell-reference pattern, shared across all rule instances.
+///
+/// Matches cell references like A1, $A$1, Sheet1!A1, 'Sheet Name'!A1, A1:B2.
+/// Groups: 1=sheet wrapper, 2=quoted sheet, 3=unquoted sheet,
+///         4=start col, 5=start row, 6=end col (opt), 7=end row (opt).
+static CELL_REF_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?:('([^']+)'|([A-Za-z0-9_\.]+))!)?\$?([A-Za-z]+)\$?([0-9]+)(?::\$?([A-Za-z]+)\$?([0-9]+))?",
+    )
+    .expect("CALC202 cell reference regex must compile")
+});
 
 /// Rule that detects circular references in formulas.
 ///
@@ -23,30 +36,17 @@ use std::collections::{HashMap, HashSet};
 ///
 /// Note: Whole column/row references (e.g., `A:A`, `1:1`) are not matched by the cell reference
 /// pattern and are flagged by rule REF307.
-pub struct CircularReferenceRule {
-    cell_ref_pattern: Regex,
-}
+pub struct CircularReferenceRule;
 
 impl CircularReferenceRule {
     pub fn new() -> Self {
-        // Regex to match cell references (e.g., A1, $A$1, Sheet1!A1, 'Sheet Name'!A1, A1:B2)
-        // Group 1: Sheet name (optional) - either quoted or unquoted
-        // Group 4: Start column
-        // Group 5: Start row
-        // Group 6: End column (optional)
-        // Group 7: End row (optional)
-        let cell_ref_pattern = Regex::new(
-            r"(?:('([^']+)'|([A-Za-z0-9_\.]+))!)?\$?([A-Za-z]+)\$?([0-9]+)(?::\$?([A-Za-z]+)\$?([0-9]+))?",
-        )
-        .unwrap();
-
-        Self { cell_ref_pattern }
+        Self
     }
 }
 
 impl Default for CircularReferenceRule {
     fn default() -> Self {
-        Self::new()
+        Self
     }
 }
 
@@ -97,7 +97,7 @@ impl WalkerRule for CircularReferenceRule {
         if let Some(formula) = cell.as_formula() {
             let refs = extract_cell_references(
                 formula,
-                &self.cell_ref_pattern,
+                &CELL_REF_PATTERN,
                 sheet.sheet_index,
                 &ctx.name_to_index,
             );

@@ -10,29 +10,31 @@ use crate::violation::{
 };
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
+
+/// Matches `=""` or `<>""` patterns.
+static EMPTY_STRING_EQ_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(=|<>)\s*"""#).expect("VUL603 empty string eq regex must compile")
+});
+
+/// Matches `LEN(...)=0` or `LEN(...)>0` patterns.
+static LEN_ZERO_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"LEN\s*\([^)]+\)\s*(=|<>|>|<)\s*0").expect("VUL603 LEN zero regex must compile")
+});
 
 /// Per-sheet cell collection: sheet_index → Vec<(row, col)>.
 type SheetCellMap = Mutex<HashMap<u16, Vec<(u32, u32)>>>;
 
 /// Rule that detects inefficient empty string tests in formulas.
 pub struct EmptyStringTestRule {
-    /// Compiled regex patterns for empty string tests.
-    patterns: Vec<Regex>,
     /// Per-sheet collected cells.
     sheet_cells: SheetCellMap,
 }
 
 impl EmptyStringTestRule {
-    /// Create a new instance with compiled regex.
+    /// Create a new instance.
     pub fn new() -> Self {
         Self {
-            patterns: vec![
-                // ="" or <>"" patterns
-                Regex::new(r#"(=|<>)\s*"""#).unwrap(),
-                // LEN(...)=0 or LEN(...)>0 patterns
-                Regex::new(r"LEN\s*\([^)]+\)\s*(=|<>|>|<)\s*0").unwrap(),
-            ],
             sheet_cells: Mutex::new(HashMap::new()),
         }
     }
@@ -92,7 +94,7 @@ impl WalkerRule for EmptyStringTestRule {
         if let Some(formula) = cell.as_formula() {
             let formula_upper = formula.to_uppercase();
 
-            if self.patterns.iter().any(|p| p.is_match(&formula_upper)) {
+            if EMPTY_STRING_EQ_RE.is_match(&formula_upper) || LEN_ZERO_RE.is_match(&formula_upper) {
                 let mut map = self.sheet_cells.lock().unwrap();
                 map.entry(sheet.sheet_index)
                     .or_default()

@@ -102,7 +102,8 @@ fn parse_ods_date(date_str: &str) -> Option<f64> {
     // Total days from year 0 to the start of `y` (Jan 1 of year y).
     // Leap year corrections use (y-1) to count leap years in [0, y-1] only;
     // using y would erroneously include year y's own leap day.
-    let days_before_year = |y: i32| -> i32 { 365 * y + (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400 };
+    let days_before_year =
+        |y: i32| -> i32 { 365 * y + (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400 };
 
     let leap_feb = if month > 2 && is_leap(year) { 1 } else { 0 };
     let absolute_days =
