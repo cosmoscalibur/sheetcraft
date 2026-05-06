@@ -218,79 +218,118 @@ pub fn create_enabled_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerR
         .collect()
 }
 
-/// Clone a walker rule for execution (rules need fresh state per lint)
-pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dyn WalkerRule> {
+/// Clone a walker rule for execution (rules need fresh state per lint).
+///
+/// Returns one or more fresh rule instances. For shared-state groups (INT401–403),
+/// all three instances are returned together to share a single data store.
+pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Vec<Box<dyn WalkerRule>> {
     match rule.id() {
-        RuleId::Err101 => Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
-        RuleId::Err102 => Box::new(err102_error_cells::ErrorCellsRule),
-        RuleId::Err103 => Box::new(err103_ref_to_error::RefToErrorRule),
+        RuleId::Err101 => vec![Box::new(err101_broken_named_ranges::BrokenNamedRangesRule)],
+        RuleId::Err102 => vec![Box::new(err102_error_cells::ErrorCellsRule)],
+        RuleId::Err103 => vec![Box::new(err103_ref_to_error::RefToErrorRule)],
         RuleId::Calc201 => {
-            Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
+            vec![Box::new(
+                calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config),
+            )]
         }
-        RuleId::Calc202 => Box::new(calc202_circular_references::CircularReferenceRule::new()),
-        RuleId::Calc203 => Box::new(calc203_double_operator::DoubleOperatorRule::new(config)),
-        RuleId::Calc204 => Box::new(calc204_approximate_lookup::ApproximateLookupRule),
-        RuleId::Calc205 => Box::new(calc205_double_count::DoubleCountRule),
-        RuleId::Ref301 => Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
-        RuleId::Ref302 => Box::new(ref302_duplicate_names::DuplicateSheetNamesRule),
-        RuleId::Ref303 => Box::new(ref303_empty_sheets::EmptySheetsRule),
-        RuleId::Ref304 => Box::new(ref304_large_used_range::LargeUsedRangeRule::new()),
-        RuleId::Ref305 => Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
-        RuleId::Ref306 => Box::new(ref306_unused_sheets::UnusedSheetsRule),
-        RuleId::Ref307 => Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
-        RuleId::Ref308 => Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
-        RuleId::Ref309 => Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
-        RuleId::Ref310 => Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
-        RuleId::Ref311 => Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
-        RuleId::Int401 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
-            int401_interrupted_by_data::InterruptionKind::Data,
+        RuleId::Calc202 => vec![Box::new(
+            calc202_circular_references::CircularReferenceRule::new(),
+        )],
+        RuleId::Calc203 => vec![Box::new(calc203_double_operator::DoubleOperatorRule::new(
             config,
-        )),
-        RuleId::Int402 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
-            int401_interrupted_by_data::InterruptionKind::Empty,
-            config,
-        )),
-        RuleId::Int403 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
-            int401_interrupted_by_data::InterruptionKind::Other,
-            config,
-        )),
-        RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
-        RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
-        RuleId::Cpx503 => Box::new(
+        ))],
+        RuleId::Calc204 => vec![Box::new(calc204_approximate_lookup::ApproximateLookupRule)],
+        RuleId::Calc205 => vec![Box::new(calc205_double_count::DoubleCountRule)],
+        RuleId::Ref301 => vec![Box::new(
+            ref301_unused_named_ranges::UnusedNamedRangesRule::new(),
+        )],
+        RuleId::Ref302 => vec![Box::new(ref302_duplicate_names::DuplicateSheetNamesRule)],
+        RuleId::Ref303 => vec![Box::new(ref303_empty_sheets::EmptySheetsRule)],
+        RuleId::Ref304 => vec![Box::new(ref304_large_used_range::LargeUsedRangeRule::new())],
+        RuleId::Ref305 => vec![Box::new(
+            ref305_blank_rows_columns::BlankRowsColumnsRule::new(),
+        )],
+        RuleId::Ref306 => vec![Box::new(ref306_unused_sheets::UnusedSheetsRule)],
+        RuleId::Ref307 => vec![Box::new(
+            ref307_whole_column_row_refs::WholeColumnRowRefsRule::new(),
+        )],
+        RuleId::Ref308 => vec![Box::new(ref308_current_sheet_ref::CurrentSheetRefRule)],
+        RuleId::Ref309 => vec![Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule)],
+        RuleId::Ref310 => vec![Box::new(ref310_longer_ref_expected::LongerRefExpectedRule)],
+        RuleId::Ref311 => vec![Box::new(ref311_reference_to_pivot::ReferenceToPivotRule)],
+        // INT401–403: always create the full shared-state group together.
+        // When any one of INT401/402/403 is cloned, emit the whole group.
+        // Duplicates are prevented in lint_workbook by deduplicating rule IDs.
+        RuleId::Int401 | RuleId::Int402 | RuleId::Int403 => {
+            let [data, empty, other] =
+                int401_interrupted_by_data::InterruptionRule::new_group(config);
+            vec![Box::new(data), Box::new(empty), Box::new(other)]
+        }
+        RuleId::Cpx501 => vec![Box::new(
+            cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config),
+        )],
+        RuleId::Cpx502 => vec![Box::new(cpx502_merged_cells::MergedCellsRule)],
+        RuleId::Cpx503 => vec![Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
                 config,
             ),
-        ),
-        RuleId::Cpx504 => Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(config)),
-        RuleId::Cpx505 => Box::new(cpx505_deep_formula_nesting::DeepFormulaNestingRule),
-        RuleId::Cpx506 => Box::new(cpx506_many_operations::ManyOperationsRule),
-        RuleId::Cpx507 => Box::new(cpx507_multiple_sheet_ref::MultipleSheetRefRule::new(config)),
-        RuleId::Cpx508 => Box::new(cpx508_many_references::ManyReferencesRule),
-        RuleId::Cpx509 => Box::new(cpx509_long_formula::LongFormulaRule),
-        RuleId::Vul601 => Box::new(vul601_duplicate_formulas::DuplicateFormulasRule::new()),
-        RuleId::Vul602 => Box::new(vul602_volatile_functions::VolatileFunctionsRule::new()),
-        RuleId::Vul603 => Box::new(vul603_empty_string_test::EmptyStringTestRule::new()),
-        RuleId::Vul604 => Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
+        )],
+        RuleId::Cpx504 => vec![Box::new(cpx504_deep_if_nesting::DeepIfNestingRule::new(
             config,
-        )),
-        RuleId::Vul605 => Box::new(vul605_legacy_array::LegacyArrayRule),
-        RuleId::Vul606 => Box::new(vul606_deprecated_func::DeprecatedFuncRule::new()),
-        RuleId::Vul607 => Box::new(vul607_unprotected::UnprotectedRule),
-        RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
-        RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
-        RuleId::Data703 => Box::new(dat703_date_formats::InconsistentDateFormatRule::new(config)),
-        RuleId::Data704 => Box::new(dat704_long_text::LongTextCellRule::new(config)),
-        RuleId::Data705 => Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
-        RuleId::Data706 => Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
-        RuleId::Data707 => Box::new(dat707_validation_miss::ValidationMissRule),
-        RuleId::Ext801 => Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
-        RuleId::Ext802 => Box::new(ext802_web_urls::WebUrlsRule::new(config)),
-        RuleId::Hid901 => Box::new(hid901_hidden_worksheet::HiddenWorksheetRule),
-        RuleId::Hid902 => Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule),
-        RuleId::File1001 => Box::new(file1001_large_file_size::LargeFileSizeRule::new(config)),
-        RuleId::File1002 => Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(config)),
-        RuleId::File1003 => Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
-        RuleId::Vba1101 => Box::new(vba1101_has_macros::HasMacrosRule),
+        ))],
+        RuleId::Cpx505 => vec![Box::new(
+            cpx505_deep_formula_nesting::DeepFormulaNestingRule,
+        )],
+        RuleId::Cpx506 => vec![Box::new(cpx506_many_operations::ManyOperationsRule)],
+        RuleId::Cpx507 => vec![Box::new(
+            cpx507_multiple_sheet_ref::MultipleSheetRefRule::new(config),
+        )],
+        RuleId::Cpx508 => vec![Box::new(cpx508_many_references::ManyReferencesRule)],
+        RuleId::Cpx509 => vec![Box::new(cpx509_long_formula::LongFormulaRule)],
+        RuleId::Vul601 => vec![Box::new(
+            vul601_duplicate_formulas::DuplicateFormulasRule::new(),
+        )],
+        RuleId::Vul602 => vec![Box::new(
+            vul602_volatile_functions::VolatileFunctionsRule::new(),
+        )],
+        RuleId::Vul603 => vec![Box::new(
+            vul603_empty_string_test::EmptyStringTestRule::new(),
+        )],
+        RuleId::Vul604 => vec![Box::new(
+            vul604_error_prone_functions::ErrorProneFunctionsRule::new(config),
+        )],
+        RuleId::Vul605 => vec![Box::new(vul605_legacy_array::LegacyArrayRule)],
+        RuleId::Vul606 => vec![Box::new(vul606_deprecated_func::DeprecatedFuncRule::new())],
+        RuleId::Vul607 => vec![Box::new(vul607_unprotected::UnprotectedRule)],
+        RuleId::Data701 => vec![Box::new(
+            dat701_sheet_names::NonDescriptiveSheetNameRule::new(config),
+        )],
+        RuleId::Data702 => vec![Box::new(
+            dat702_numeric_formats::InconsistentNumberFormatRule::new(),
+        )],
+        RuleId::Data703 => vec![Box::new(
+            dat703_date_formats::InconsistentDateFormatRule::new(config),
+        )],
+        RuleId::Data704 => vec![Box::new(dat704_long_text::LongTextCellRule::new(config))],
+        RuleId::Data705 => vec![Box::new(dat705_unnecessary_space::UnnecessarySpaceRule)],
+        RuleId::Data706 => vec![Box::new(dat706_numeric_text_calc::NumericTextCalcRule)],
+        RuleId::Data707 => vec![Box::new(dat707_validation_miss::ValidationMissRule)],
+        RuleId::Ext801 => vec![Box::new(
+            ext801_external_workbook::ExternalWorkbooksRule::new(),
+        )],
+        RuleId::Ext802 => vec![Box::new(ext802_web_urls::WebUrlsRule::new(config))],
+        RuleId::Hid901 => vec![Box::new(hid901_hidden_worksheet::HiddenWorksheetRule)],
+        RuleId::Hid902 => vec![Box::new(hid902_hidden_columns_rows::HiddenColumnsRowsRule)],
+        RuleId::File1001 => vec![Box::new(file1001_large_file_size::LargeFileSizeRule::new(
+            config,
+        ))],
+        RuleId::File1002 => vec![Box::new(file1002_old_spreadsheet::OldSpreadsheetRule::new(
+            config,
+        ))],
+        RuleId::File1003 => vec![Box::new(
+            file1003_date_system_1904::DateSystem1904Rule::new(),
+        )],
+        RuleId::Vba1101 => vec![Box::new(vba1101_has_macros::HasMacrosRule)],
     }
 }
 

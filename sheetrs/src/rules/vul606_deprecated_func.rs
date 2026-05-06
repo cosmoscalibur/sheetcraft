@@ -116,12 +116,24 @@ impl WalkerRule for DeprecatedFuncRule {
                     .collect()
             });
 
+            let formula_bytes = formula_upper.as_bytes();
             let mut map = self.sheet_cells.lock().unwrap();
             for (idx, pattern) in SEARCH_PATTERNS.iter().enumerate() {
-                if formula_upper.contains(pattern.as_str()) {
-                    map.entry(sheet.sheet_index)
-                        .or_default()
-                        .push((idx as u8, cell.row, cell.col));
+                // Find all occurrences and check word boundary before each
+                let pat_bytes = pattern.as_bytes();
+                let mut search_from = 0;
+                while let Some(rel_pos) = formula_upper[search_from..].find(pattern.as_str()) {
+                    let abs_pos = search_from + rel_pos;
+                    // Only match if NOT preceded by a letter (rejects VLOOKUP→LOOKUP, etc.)
+                    let is_word_start =
+                        abs_pos == 0 || !formula_bytes[abs_pos - 1].is_ascii_alphabetic();
+                    if is_word_start {
+                        map.entry(sheet.sheet_index)
+                            .or_default()
+                            .push((idx as u8, cell.row, cell.col));
+                        break; // Found a genuine match for this pattern in this cell
+                    }
+                    search_from = abs_pos + pat_bytes.len();
                 }
             }
         }
@@ -272,5 +284,62 @@ mod tests {
         let violations = run_rule(&rule, &sheet);
 
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_vlookup_not_false_positive() {
+        // VLOOKUP contains LOOKUP but should NOT trigger the deprecated LOOKUP rule
+        let sheet = make_sheet(vec![make_formula_cell(0, 0, "VLOOKUP(A1,B:C,2,FALSE)")]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_hlookup_not_false_positive() {
+        let sheet = make_sheet(vec![make_formula_cell(0, 0, "HLOOKUP(A1,1:3,2,FALSE)")]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_xlookup_not_false_positive() {
+        // XLOOKUP is the recommended replacement for LOOKUP — must NOT be flagged
+        let sheet = make_sheet(vec![make_formula_cell(0, 0, "XLOOKUP(A1,B1:B10,C1:C10)")]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_bare_lookup_still_flagged() {
+        let sheet = make_sheet(vec![make_formula_cell(0, 0, "LOOKUP(A1,B1:B10,C1:C10)")]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_covar_not_flagged_as_var() {
+        // COVAR contains VAR but should only flag COVAR, not VAR
+        let sheet = make_sheet(vec![make_formula_cell(0, 0, "COVAR(A1:A10,B1:B10)")]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        // Should flag COVAR only, not also VAR
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_two_deprecated_in_one_cell() {
+        // A single cell with two different deprecated functions should produce two violations
+        let sheet = make_sheet(vec![make_formula_cell(
+            0,
+            0,
+            "CONCATENATE(STDEV(A1:A10),B1)",
+        )]);
+        let rule = DeprecatedFuncRule::new();
+        let violations = run_rule(&rule, &sheet);
+        assert_eq!(violations.len(), 2);
     }
 }

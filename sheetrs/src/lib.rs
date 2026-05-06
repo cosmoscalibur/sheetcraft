@@ -62,11 +62,15 @@ impl Linter {
     pub fn lint_workbook(&self, workbook: &reader::Workbook) -> Result<Vec<Violation>> {
         let mut violations = Vec::new();
 
-        // Run walker rules in single pass
+        // Run walker rules in single pass.
+        // clone_walker_rule may return multiple rules (e.g. INT group returns 3).
+        // Deduplicate by rule ID to avoid 3× INT rules when all 3 are enabled.
+        let mut seen_ids = std::collections::HashSet::new();
         let walker_rules_cloned: Vec<Box<dyn WalkerRule>> = self
             .walker_rules
             .iter()
-            .map(|r| rules::registry::clone_walker_rule(r.as_ref(), &self.config))
+            .flat_map(|r| rules::registry::clone_walker_rule(r.as_ref(), &self.config))
+            .filter(|r| seen_ids.insert(r.id()))
             .collect();
         let walker = WorkbookWalker::new(workbook, walker_rules_cloned);
         let walker_violations = walker.walk();

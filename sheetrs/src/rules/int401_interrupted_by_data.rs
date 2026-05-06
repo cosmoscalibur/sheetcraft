@@ -186,6 +186,10 @@ impl InterruptionRule {
     }
 
     /// Scan a sequence of cells along one axis and find interruptions.
+    ///
+    /// The algorithm iterates over actual cells (O(n)), using a HashMap for
+    /// O(1) position lookups. A max-gap limit prevents degenerate behaviour
+    /// on extremely sparse data.
     fn find_interruptions(
         cells: &[(u32, CellType)],
         is_column: bool,
@@ -198,71 +202,81 @@ impl InterruptionRule {
 
         let mut interruptions = Vec::new();
 
-        // Build the full position range from min to max
-        let min_pos = cells.iter().map(|(pos, _)| *pos).min().unwrap_or(0);
-        let max_pos = cells.iter().map(|(pos, _)| *pos).max().unwrap_or(0);
-
-        // Create a lookup from position to cell type
+        // O(1) lookup from position → cell type
         let cell_map: HashMap<u32, &CellType> = cells.iter().map(|(pos, ct)| (*pos, ct)).collect();
+
+        // Maximum gap (absent positions) to bridge between matching formulas.
+        // Beyond this, we consider the run broken. This caps worst-case iteration
+        // for sparse data (e.g. rows 1 and 1_000_000) to O(MAX_GAP) per bridge.
+        const MAX_GAP: u32 = 100;
 
         /// Classify a position from the cell_map (absent = Empty).
         fn classify<'a>(cell_map: &'a HashMap<u32, &'a CellType>, pos: u32) -> &'a CellType {
             cell_map.get(&pos).copied().unwrap_or(&CellType::Empty)
         }
 
-        /// Scan forward from `start` (exclusive) up to `max` (inclusive) looking
-        /// for the next formula cell matching `pattern`. Returns its position
-        /// and a vec of (position, InterruptionKind) for cells in between.
-        fn scan_for_next_match(
-            cell_map: &HashMap<u32, &CellType>,
-            start: u32,
-            max: u32,
-            pattern: &str,
-        ) -> Option<(u32, Vec<(u32, InterruptionKind)>)> {
-            let mut gaps = Vec::new();
-            let mut probe = start + 1;
-            while probe <= max {
-                match classify(cell_map, probe) {
-                    CellType::Formula(p) if p == pattern => return Some((probe, gaps)),
-                    CellType::Formula(_) => gaps.push((probe, InterruptionKind::Other)),
-                    CellType::Value => gaps.push((probe, InterruptionKind::Data)),
-                    CellType::Empty => gaps.push((probe, InterruptionKind::Empty)),
-                }
-                probe += 1;
-            }
-            None
-        }
-
-        // Walk through all positions and find formula runs
-        let mut pos = min_pos;
-        while pos <= max_pos {
-            // Skip non-formula cells to find the start of a potential formula run
-            let pattern = match classify(&cell_map, pos) {
+        // Walk through sorted cells, building formula runs.
+        let mut i = 0;
+        while i < cells.len() {
+            // Find the start of a formula run
+            let pattern = match &cells[i].1 {
                 CellType::Formula(p) => p.clone(),
                 _ => {
-                    pos += 1;
+                    i += 1;
                     continue;
                 }
             };
 
-            let run_start = pos;
-            let mut run_end = pos;
+            let run_start = cells[i].0;
+            let mut run_end = run_start;
             let mut run_interruptions: Vec<(u32, InterruptionKind)> = Vec::new();
 
-            // Extend the run, collecting interruptions along the way.
-            // scan_for_next_match bridges multi-cell gaps (C3/C4 fix).
-            let mut scan_pos = pos;
-            while let Some((next_match, gap_interruptions)) =
-                scan_for_next_match(&cell_map, scan_pos, max_pos, &pattern)
-            {
-                run_interruptions.extend(gap_interruptions);
-                run_end = next_match;
-                scan_pos = next_match;
+            // Extend the run by scanning forward through cells.
+            let mut j = i + 1;
+            while j < cells.len() {
+                let (pos, ct) = &cells[j];
+
+                // If this cell is far beyond run_end, check the gap
+                if *pos > run_end + 1 {
+                    let gap = *pos - run_end - 1;
+                    if gap > MAX_GAP {
+                        // Too sparse — break the run
+                        break;
+                    }
+                    // Record absent positions as Empty interruptions
+                    for gap_pos in (run_end + 1)..*pos {
+                        if !cell_map.contains_key(&gap_pos) {
+                            run_interruptions.push((gap_pos, InterruptionKind::Empty));
+                        }
+                    }
+                }
+
+                match ct {
+                    CellType::Formula(p) if p == &pattern => {
+                        run_end = *pos;
+                        j += 1;
+                    }
+                    CellType::Formula(_) => {
+                        run_interruptions.push((*pos, InterruptionKind::Other));
+                        run_end = *pos;
+                        j += 1;
+                    }
+                    CellType::Value => {
+                        run_interruptions.push((*pos, InterruptionKind::Data));
+                        run_end = *pos;
+                        j += 1;
+                    }
+                    CellType::Empty => {
+                        run_interruptions.push((*pos, InterruptionKind::Empty));
+                        run_end = *pos;
+                        j += 1;
+                    }
+                }
             }
 
             // For each interruption, check that at least one side has ≥ min_seq
-            // consecutive formulas with the same pattern.
-            for (int_pos, int_kind) in run_interruptions {
+            // consecutive matching formulas.
+            for &(int_pos, int_kind) in &run_interruptions {
                 // Count formulas before the interruption
                 let mut before_count = 0usize;
                 let mut check = int_pos;
@@ -303,7 +317,8 @@ impl InterruptionRule {
                 }
             }
 
-            pos = run_end + 1;
+            // Advance past this run
+            i = if j > i { j } else { i + 1 };
         }
 
         interruptions

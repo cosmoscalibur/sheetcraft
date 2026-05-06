@@ -66,12 +66,11 @@ redundant work:
   `Arc<Mutex<...>>` data store. Only the **collector** instance
   (`is_collector: true`) runs `on_cell()` and `on_sheet_end()`. The collector
   sets `emit_all_kinds: true` to emit violations for all rule IDs in the group.
-- `new()` returns a **standalone** instance that collects and emits only for
-  its own `kind` (`emit_all_kinds: false`). This is used by `clone_walker_rule`
-  when a single rule needs fresh state.
 
-The group is created in `create_all_walker_rules()` and the standalone path
-is used by `clone_walker_rule()`.
+Both `create_all_walker_rules()` and `clone_walker_rule()` use `new_group()`
+to create INT instances. `clone_walker_rule()` returns `Vec<Box<dyn WalkerRule>>`
+so it can return the full group; `lint_workbook` deduplicates by rule ID to
+prevent triplication when all three INT rules are enabled.
 
 ### Formula Normalization
 
