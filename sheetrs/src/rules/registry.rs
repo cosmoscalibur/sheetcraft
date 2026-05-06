@@ -116,7 +116,7 @@ pub fn get_all_rule_metadata(config: &LinterConfig) -> Vec<RuleMetadata> {
 
 /// Create instances of all available walker rules
 pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>> {
-    vec![
+    let mut rules: Vec<Box<dyn WalkerRule>> = vec![
         // Excel Errors (1xx)
         Box::new(err101_broken_named_ranges::BrokenNamedRangesRule),
         // Unreliable Calculations (2xx)
@@ -125,7 +125,7 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         // ERR102/ERR103 after CALC202 so on_workbook_end reads circular_cells
         Box::new(err102_error_cells::ErrorCellsRule),
         Box::new(err103_ref_to_error::RefToErrorRule),
-        Box::new(calc203_double_operator::DoubleOperatorRule),
+        Box::new(calc203_double_operator::DoubleOperatorRule::new(config)),
         Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         Box::new(calc205_double_count::DoubleCountRule),
         // Reference Issues (3xx)
@@ -140,12 +140,19 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
         Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
         Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
-        // Formula Interruptions (4xx)
-        Box::new(int401_interrupted_by_data::InterruptedByDataRule),
-        Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
-        Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
+    ];
+
+    // Formula Interruptions (4xx) — shared state group to avoid 3× work
+    let [int_data, int_empty, int_other] =
+        int401_interrupted_by_data::InterruptionRule::new_group(config);
+    rules.push(Box::new(int_data));
+    rules.push(Box::new(int_empty));
+    rules.push(Box::new(int_other));
+
+    // Remaining rules
+    rules.extend(vec![
         // Complexity (5xx)
-        Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
+        Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)) as Box<dyn WalkerRule>,
         Box::new(cpx502_merged_cells::MergedCellsRule),
         Box::new(
             cpx503_excessive_conditional_formatting::ExcessiveConditionalFormattingRule::new(
@@ -166,7 +173,7 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
             config,
         )),
         Box::new(vul605_legacy_array::LegacyArrayRule),
-        Box::new(vul606_deprecated_func::DeprecatedFuncRule),
+        Box::new(vul606_deprecated_func::DeprecatedFuncRule::new()),
         Box::new(vul607_unprotected::UnprotectedRule),
         // Data Issues (7xx)
         Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
@@ -188,7 +195,9 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(file1003_date_system_1904::DateSystem1904Rule::new()),
         // VBA Issues (11xx)
         Box::new(vba1101_has_macros::HasMacrosRule),
-    ]
+    ]);
+
+    rules
 }
 
 /// Create enabled walker rules based on configuration
@@ -219,7 +228,7 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
             Box::new(calc201_hardcoded_values::HardcodedValuesInFormulasRule::new(config))
         }
         RuleId::Calc202 => Box::new(calc202_circular_references::CircularReferenceRule::new()),
-        RuleId::Calc203 => Box::new(calc203_double_operator::DoubleOperatorRule),
+        RuleId::Calc203 => Box::new(calc203_double_operator::DoubleOperatorRule::new(config)),
         RuleId::Calc204 => Box::new(calc204_approximate_lookup::ApproximateLookupRule),
         RuleId::Calc205 => Box::new(calc205_double_count::DoubleCountRule),
         RuleId::Ref301 => Box::new(ref301_unused_named_ranges::UnusedNamedRangesRule::new()),
@@ -233,9 +242,18 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
         RuleId::Ref309 => Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
         RuleId::Ref310 => Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
         RuleId::Ref311 => Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
-        RuleId::Int401 => Box::new(int401_interrupted_by_data::InterruptedByDataRule),
-        RuleId::Int402 => Box::new(int402_interrupted_by_empty::InterruptedByEmptyRule),
-        RuleId::Int403 => Box::new(int403_interrupted_by_other::InterruptedByOtherRule),
+        RuleId::Int401 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
+            int401_interrupted_by_data::InterruptionKind::Data,
+            config,
+        )),
+        RuleId::Int402 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
+            int401_interrupted_by_data::InterruptionKind::Empty,
+            config,
+        )),
+        RuleId::Int403 => Box::new(int401_interrupted_by_data::InterruptionRule::new(
+            int401_interrupted_by_data::InterruptionKind::Other,
+            config,
+        )),
         RuleId::Cpx501 => Box::new(cpx501_sheet_counts::ExcessiveSheetCountsRule::new(config)),
         RuleId::Cpx502 => Box::new(cpx502_merged_cells::MergedCellsRule),
         RuleId::Cpx503 => Box::new(
@@ -256,7 +274,7 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Box<dy
             config,
         )),
         RuleId::Vul605 => Box::new(vul605_legacy_array::LegacyArrayRule),
-        RuleId::Vul606 => Box::new(vul606_deprecated_func::DeprecatedFuncRule),
+        RuleId::Vul606 => Box::new(vul606_deprecated_func::DeprecatedFuncRule::new()),
         RuleId::Vul607 => Box::new(vul607_unprotected::UnprotectedRule),
         RuleId::Data701 => Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
         RuleId::Data702 => Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
