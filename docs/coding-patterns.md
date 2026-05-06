@@ -56,6 +56,63 @@ for single-pass cell-by-cell traversal:
 Violations are reported with full context: File → Sheet → Cell. Use
 `ViolationScope` to specify the granularity.
 
+### Shared-State Groups
+
+When multiple rule IDs share the same collection logic (e.g., INT401–403 all
+scan for formula interruptions), use a **shared-state group** to avoid
+redundant work:
+
+- `new_group()` returns an array of instances sharing a single
+  `Arc<Mutex<...>>` data store. Only the **collector** instance
+  (`is_collector: true`) runs `on_cell()` and `on_sheet_end()`. The collector
+  sets `emit_all_kinds: true` to emit violations for all rule IDs in the group.
+
+Both `create_all_walker_rules()` and `clone_walker_rule()` use `new_group()`
+to create INT instances. `clone_walker_rule()` returns `Vec<Box<dyn WalkerRule>>`
+so it can return the full group; `lint_workbook` deduplicates by rule ID to
+prevent triplication when all three INT rules are enabled.
+
+### Formula Normalization
+
+The INT rules normalize formulas to R1C1-style relative offsets so that
+structurally identical formulas in different cells produce the same pattern
+string (e.g., `=A1+B1` in cell C1 and `=A2+B2` in cell C2 both become
+`=R[0]C[-2]+R[0]C[-1]`).
+
+Absolute references (`$A$1`) are normalized to fixed markers (`R0C0`) to
+distinguish them from relative references. The regex skips false matches
+on function names (e.g., `LOG10`) and sheet qualifiers (e.g., `SHEET1!`)
+by checking surrounding context.
+
+### Gap Policy (Interruption Context Boundaries)
+
+When scanning for interruptions, `find_interruptions` must decide how far
+apart two matching formulas can be and still belong to the same "run". The
+algorithm uses a **gap=1 policy**:
+
+- **1 absent cell** between formula cells → bridged as an Empty interruption
+  (likely an oversight: missing formula, formatting artifact).
+- **2+ absent cells** → the run is broken. The two formula blocks are treated
+  as **separate contexts** (headers, spacing, different data sections).
+
+This is a conservative choice that avoids merging unrelated formula regions.
+A spreadsheet column often contains multiple independent formula contexts
+separated by blank rows. Merging them would produce false "Interrupted by
+Other/Empty" violations.
+
+**Performance:** The gap=1 policy makes the algorithm strictly O(n) in the
+number of cells. No range iteration is needed — only a single position check
+(`pos == run_end + 2`) per cell transition.
+
+### Configuration Parameters
+
+Rules may accept configuration parameters via `LinterConfig`:
+
+- `calc203_allow_double_negative` (bool) — If `true`, `--` (double negative /
+  coercion to number) is not flagged by CALC203.
+- `int_min_formula_sequence` (int, default 3) — Minimum formula run length
+  for INT401–403 to consider a sequence.
+
 ## Performance Guidelines
 
 - Use streaming readers — avoid loading data that is not needed.

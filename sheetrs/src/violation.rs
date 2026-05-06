@@ -472,7 +472,7 @@ impl CellReference {
     }
 
     /// Convert column number to letter (0 -> A, 1 -> B, etc.)
-    fn col_to_letter(mut col: u32) -> String {
+    pub fn col_to_letter(mut col: u32) -> String {
         let mut result = String::new();
         loop {
             result.insert(0, (b'A' + (col % 26) as u8) as char);
