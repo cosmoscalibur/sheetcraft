@@ -84,6 +84,26 @@ distinguish them from relative references. The regex skips false matches
 on function names (e.g., `LOG10`) and sheet qualifiers (e.g., `SHEET1!`)
 by checking surrounding context.
 
+### Gap Policy (Interruption Context Boundaries)
+
+When scanning for interruptions, `find_interruptions` must decide how far
+apart two matching formulas can be and still belong to the same "run". The
+algorithm uses a **gap=1 policy**:
+
+- **1 absent cell** between formula cells → bridged as an Empty interruption
+  (likely an oversight: missing formula, formatting artifact).
+- **2+ absent cells** → the run is broken. The two formula blocks are treated
+  as **separate contexts** (headers, spacing, different data sections).
+
+This is a conservative choice that avoids merging unrelated formula regions.
+A spreadsheet column often contains multiple independent formula contexts
+separated by blank rows. Merging them would produce false "Interrupted by
+Other/Empty" violations.
+
+**Performance:** The gap=1 policy makes the algorithm strictly O(n) in the
+number of cells. No range iteration is needed — only a single position check
+(`pos == run_end + 2`) per cell transition.
+
 ### Configuration Parameters
 
 Rules may accept configuration parameters via `LinterConfig`:

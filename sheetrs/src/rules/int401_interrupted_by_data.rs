@@ -187,9 +187,14 @@ impl InterruptionRule {
 
     /// Scan a sequence of cells along one axis and find interruptions.
     ///
-    /// The algorithm iterates over actual cells (O(n)), using a HashMap for
-    /// O(1) position lookups. A max-gap limit prevents degenerate behaviour
-    /// on extremely sparse data.
+    /// The algorithm iterates over sorted cells (O(n)), using a HashMap for
+    /// O(1) position lookups. Only a gap of exactly 1 absent position is
+    /// bridged — wider gaps are treated as separate formula contexts.
+    ///
+    /// **Gap policy (gap=1):** A single absent cell between formula cells is
+    /// likely an oversight (missing formula, formatting artifact) and is
+    /// reported as an Empty interruption. Two or more absent cells indicate a
+    /// deliberate section boundary (headers, spacing) and break the run.
     fn find_interruptions(
         cells: &[(u32, CellType)],
         is_column: bool,
@@ -204,11 +209,6 @@ impl InterruptionRule {
 
         // O(1) lookup from position → cell type
         let cell_map: HashMap<u32, &CellType> = cells.iter().map(|(pos, ct)| (*pos, ct)).collect();
-
-        // Maximum gap (absent positions) to bridge between matching formulas.
-        // Beyond this, we consider the run broken. This caps worst-case iteration
-        // for sparse data (e.g. rows 1 and 1_000_000) to O(MAX_GAP) per bridge.
-        const MAX_GAP: u32 = 100;
 
         /// Classify a position from the cell_map (absent = Empty).
         fn classify<'a>(cell_map: &'a HashMap<u32, &'a CellType>, pos: u32) -> &'a CellType {
@@ -236,19 +236,16 @@ impl InterruptionRule {
             while j < cells.len() {
                 let (pos, ct) = &cells[j];
 
-                // If this cell is far beyond run_end, check the gap
-                if *pos > run_end + 1 {
-                    let gap = *pos - run_end - 1;
-                    if gap > MAX_GAP {
-                        // Too sparse — break the run
-                        break;
-                    }
-                    // Record absent positions as Empty interruptions
-                    for gap_pos in (run_end + 1)..*pos {
-                        if !cell_map.contains_key(&gap_pos) {
-                            run_interruptions.push((gap_pos, InterruptionKind::Empty));
-                        }
-                    }
+                // Gap policy: only bridge a gap of exactly 1 absent position.
+                // Wider gaps break the run (new formula context).
+                if *pos > run_end + 2 {
+                    break;
+                }
+
+                // If there is exactly 1 absent position between run_end and
+                // this cell, record it as an Empty interruption.
+                if *pos == run_end + 2 && !cell_map.contains_key(&(run_end + 1)) {
+                    run_interruptions.push((run_end + 1, InterruptionKind::Empty));
                 }
 
                 match ct {
@@ -747,5 +744,65 @@ mod tests {
 
         // With min=5, neither side has ≥5 → no violation
         assert_eq!(violations.len(), 0);
+    }
+
+    // --- Gap policy: gap=1 boundary ---
+
+    #[test]
+    fn test_gap_1_absent_cell_is_bridged() {
+        // Column A: F,F,F,_,F,F,F — gap of 1 absent cell is bridged
+        // (row 3 absent → empty interruption)
+        let sheet = make_sheet(vec![
+            make_formula_cell(0, 0, "B1+C1"),
+            make_formula_cell(1, 0, "B2+C2"),
+            make_formula_cell(2, 0, "B3+C3"),
+            // row 3 absent
+            make_formula_cell(4, 0, "B5+C5"),
+            make_formula_cell(5, 0, "B6+C6"),
+            make_formula_cell(6, 0, "B7+C7"),
+        ]);
+        let violations = run_rule(InterruptionKind::Empty, &sheet);
+        assert_eq!(
+            violations.len(),
+            1,
+            "gap=1 should be bridged as interruption"
+        );
+    }
+
+    #[test]
+    fn test_gap_2_absent_cells_breaks_run() {
+        // Column A: F,F,F,_,_,F,F,F — gap of 2 absent cells breaks the run
+        // (rows 3,4 absent → separate contexts → no interruption)
+        let sheet = make_sheet(vec![
+            make_formula_cell(0, 0, "B1+C1"),
+            make_formula_cell(1, 0, "B2+C2"),
+            make_formula_cell(2, 0, "B3+C3"),
+            // rows 3,4 absent
+            make_formula_cell(5, 0, "B6+C6"),
+            make_formula_cell(6, 0, "B7+C7"),
+            make_formula_cell(7, 0, "B8+C8"),
+        ]);
+        let violations = run_rule(InterruptionKind::Empty, &sheet);
+        assert_eq!(
+            violations.len(),
+            0,
+            "gap=2 should break the run (separate contexts)"
+        );
+    }
+
+    #[test]
+    fn test_sparse_data_no_false_merge() {
+        // Column A: formulas at rows 0–2 and rows 1000–1002 — far apart
+        // Should be treated as two separate contexts, not one interrupted run
+        let sheet = make_sheet(vec![
+            make_formula_cell(0, 0, "B1+C1"),
+            make_formula_cell(1, 0, "B2+C2"),
+            make_formula_cell(2, 0, "B3+C3"),
+            make_formula_cell(1000, 0, "B1001+C1001"),
+            make_formula_cell(1001, 0, "B1002+C1002"),
+            make_formula_cell(1002, 0, "B1003+C1003"),
+        ]);
+        let violations = run_rule(InterruptionKind::Empty, &sheet);
+        assert_eq!(violations.len(), 0, "sparse data should not be merged");
     }
 }
