@@ -2356,13 +2356,13 @@ mod tests {
     fn test_read_database_ranges_ods() {
         use std::io::Cursor;
         use std::io::Write;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
             let options =
-                FileOptions::<()>::default().compression_method(zip::CompressionMethod::Stored);
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             zip.start_file("content.xml", options).unwrap();
             zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?>
@@ -2402,13 +2402,13 @@ mod tests {
     fn test_styled_empty_cell_ods() {
         use std::io::Cursor;
         use std::io::Write;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
             let options =
-                FileOptions::<()>::default().compression_method(zip::CompressionMethod::Stored);
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             zip.start_file("content.xml", options).unwrap();
             zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?>
@@ -2442,13 +2442,13 @@ mod tests {
     fn test_merged_cells_indexing_ods() {
         use std::io::Cursor;
         use std::io::Write;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
             let options =
-                FileOptions::<()>::default().compression_method(zip::CompressionMethod::Stored);
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             zip.start_file("content.xml", options).unwrap();
             zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?>

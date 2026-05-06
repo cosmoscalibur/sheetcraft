@@ -1980,14 +1980,14 @@ mod tests {
     #[test]
     fn test_extract_tables_from_xlsx() {
         use std::io::Cursor;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
 
             let options =
-                FileOptions::<()>::default().compression_method(zip::CompressionMethod::Stored);
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             // Add a table file
             zip.start_file("xl/tables/table1.xml", options).unwrap();

@@ -5,7 +5,7 @@ use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use std::collections::HashSet;
 use std::io::{Cursor, Read, Seek, Write};
-use zip::{ZipArchive, ZipWriter, write::FileOptions};
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 /// Struct used to define modifications to be applied to a workbook
 #[derive(Debug, Default)]
@@ -73,23 +73,23 @@ pub fn modify_workbook_xlsx<R: Read + Seek, W: Write + Seek>(
                 content = remove_named_ranges_from_workbook_xml(&content, ranges)?;
             }
 
-            zip_writer.start_file(&name, FileOptions::<()>::default())?;
+            zip_writer.start_file(&name, SimpleFileOptions::default())?;
             zip_writer.write_all(content.as_bytes())?;
         } else if name == "[Content_Types].xml" && !sheet_ids_to_remove.is_empty() {
             let mut content = String::new();
             file.read_to_string(&mut content)?;
             let modified_content = remove_sheet_content_types(&content, &sheet_ids_to_remove)?;
-            zip_writer.start_file(&name, FileOptions::<()>::default())?;
+            zip_writer.start_file(&name, SimpleFileOptions::default())?;
             zip_writer.write_all(modified_content.as_bytes())?;
         } else if name == "xl/_rels/workbook.xml.rels" && !sheet_ids_to_remove.is_empty() {
             let mut content = String::new();
             file.read_to_string(&mut content)?;
             let modified_content = remove_sheet_relationships(&content, &sheet_ids_to_remove)?;
-            zip_writer.start_file(&name, FileOptions::<()>::default())?;
+            zip_writer.start_file(&name, SimpleFileOptions::default())?;
             zip_writer.write_all(modified_content.as_bytes())?;
         } else {
             // Copy file as is
-            zip_writer.start_file(&name, FileOptions::<()>::default())?;
+            zip_writer.start_file(&name, SimpleFileOptions::default())?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)?;
             zip_writer.write_all(&buffer)?;
