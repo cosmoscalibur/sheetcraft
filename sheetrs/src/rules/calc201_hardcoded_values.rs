@@ -229,6 +229,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=123+A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -239,6 +240,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: Some(<Box<str>>::from("=0+1.5")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -249,6 +251,7 @@ mod tests {
             (0, 2),
             Cell {
                 formula: Some(<Box<str>>::from(r#"=IF(A1>10, "Value: 5", 100)"#)),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 2,
@@ -259,6 +262,7 @@ mod tests {
             (0, 3),
             Cell {
                 formula: Some(<Box<str>>::from("=0.1+0.01")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 3,
@@ -340,6 +344,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=A2*1.5+3.14+42")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -381,6 +386,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=[1]Sheet1!A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -392,6 +398,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: Some(<Box<str>>::from("=[2]Data!B5")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -405,6 +412,7 @@ mod tests {
             (0, 2),
             Cell {
                 formula: Some(<Box<str>>::from("=[1]Sheet1!A1+6")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 2,

@@ -141,6 +141,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from(r#"=IF(A1="","Empty","Not Empty")"#)),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -173,6 +174,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=IF(LEN(A1)=0,\"Empty\",\"Not Empty\")")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -205,6 +207,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=IF(ISBLANK(A1),\"Empty\",\"Not Empty\")")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

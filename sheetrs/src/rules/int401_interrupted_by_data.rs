@@ -495,6 +495,7 @@ mod tests {
     fn make_formula_cell(row: u32, col: u32, formula: &str) -> Cell {
         Cell {
             formula: Some(<Box<str>>::from(formula)),
+            is_array: false,
             num_fmt: None,
             row,
             col,
@@ -505,6 +506,7 @@ mod tests {
     fn make_value_cell(row: u32, col: u32, value: f64) -> Cell {
         Cell {
             formula: None,
+            is_array: false,
             num_fmt: None,
             row,
             col,

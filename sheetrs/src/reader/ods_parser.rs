@@ -197,6 +197,15 @@ pub fn normalize_ods_reference(
         result = strip_local_sheet_refs(&result);
     }
 
+    // Post-processing: normalize ODS argument separator (`;` → `,`)
+    // ODS uses `;` between function arguments; rules expect Excel-style `,`.
+    // Only apply to formulas (prefixed with `of:=`), not to range addresses
+    // (conditional formatting targets, named ranges, database ranges) where `;`
+    // could theoretically be a multi-area union separator.
+    if reference.starts_with("of:=") {
+        result = normalize_arg_separator(&result);
+    }
+
     // Post-processing: handle identical range parts (A1:A1 → A1)
     // BUT preserve whole column/row ranges (A:A, 1:1)
     if let Some((start, end)) = result.split_once(':')
@@ -520,6 +529,28 @@ fn strip_local_sheet_refs(formula: &str) -> String {
     let single_re = SHEET_SINGLE_PATTERN
         .get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)\.([A-Z$0-9]+)$").unwrap());
     result = single_re.replace_all(&result, "$2").to_string();
+
+    result
+}
+
+/// Replace ODS function argument separators (`;` → `,`) outside string literals.
+///
+/// ODS formulas use `;` between arguments while Excel uses `,`. This function
+/// performs the substitution while preserving `;` inside double-quoted strings.
+fn normalize_arg_separator(formula: &str) -> String {
+    let mut result = String::with_capacity(formula.len());
+    let mut in_string = false;
+
+    for ch in formula.chars() {
+        match ch {
+            '"' => {
+                in_string = !in_string;
+                result.push(ch);
+            }
+            ';' if !in_string => result.push(','),
+            _ => result.push(ch),
+        }
+    }
 
     result
 }
@@ -1325,6 +1356,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             let mut has_value = false;
                             let mut is_error_cell = false;
                             let mut style_name = String::new();
+                            let mut is_matrix_array = false;
 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
@@ -1387,6 +1419,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                 _ => CellValue::Text(Arc::from(val_str.as_str())),
                                             };
                                             has_value = true;
+                                        }
+                                    }
+                                    b"table:number-matrix-columns-spanned" => {
+                                        let v = attr.unescape_value()?.parse::<u32>().unwrap_or(0);
+                                        if v > 0 {
+                                            is_matrix_array = true;
                                         }
                                     }
                                     _ => {}
@@ -1493,6 +1531,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                 col: current_col + c,
                                                 value: cell_value.clone(),
                                                 formula: formula_for_cell.as_deref().map(Box::from),
+                                                is_array: is_matrix_array,
                                                 num_fmt: num_fmt.clone(),
                                             };
                                             sheet
@@ -1529,6 +1568,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             let mut rows_spanned = 1u32;
                             let mut formula = None;
                             let mut style_name = String::new();
+                            let mut is_matrix_array = false;
 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
@@ -1555,6 +1595,12 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     }
                                     b"table:style-name" => {
                                         style_name = attr.unescape_value()?.to_string();
+                                    }
+                                    b"table:number-matrix-columns-spanned" => {
+                                        let v = attr.unescape_value()?.parse::<u32>().unwrap_or(0);
+                                        if v > 0 {
+                                            is_matrix_array = true;
+                                        }
                                     }
                                     _ => {}
                                 }
@@ -1597,6 +1643,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                                 col: current_col + c,
                                                 value: cell_value.clone(),
                                                 formula: formula_for_cell.as_deref().map(Box::from),
+                                                is_array: is_matrix_array,
                                                 num_fmt: num_fmt.clone(),
                                             };
                                             sheet
@@ -2246,6 +2293,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_normalize_arg_separator_basic() {
+        assert_eq!(normalize_arg_separator("SUM(A1;B1)"), "SUM(A1,B1)");
+    }
+
+    #[test]
+    fn test_normalize_arg_separator_preserves_strings() {
+        // Semicolons inside double-quoted strings must be preserved
+        assert_eq!(
+            normalize_arg_separator("IF(A1;\"yes;no\";\"maybe\")"),
+            "IF(A1,\"yes;no\",\"maybe\")"
+        );
+    }
+
+    #[test]
+    fn test_normalize_arg_separator_string_only() {
+        assert_eq!(
+            normalize_arg_separator("\"Hello; world\""),
+            "\"Hello; world\""
+        );
+    }
+
+    #[test]
+    fn test_normalize_arg_separator_mixed() {
+        assert_eq!(
+            normalize_arg_separator("CONCATENATE(\"a;b\";C1;D1)"),
+            "CONCATENATE(\"a;b\",C1,D1)"
+        );
+    }
+
+    #[test]
+    fn test_normalize_arg_separator_no_semicolons() {
+        assert_eq!(normalize_arg_separator("SUM(A1,B1)"), "SUM(A1,B1)");
+    }
+
+    #[test]
+    fn test_normalize_arg_separator_empty() {
+        assert_eq!(normalize_arg_separator(""), "");
+    }
     #[test]
     fn test_normalize_ods_external_reference_inline() {
         let mut external_workbooks = Vec::new();

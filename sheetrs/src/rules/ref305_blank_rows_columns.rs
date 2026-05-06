@@ -342,6 +342,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -352,6 +353,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -364,6 +366,7 @@ mod tests {
             (4, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 4,
                 col: 0,
@@ -374,6 +377,7 @@ mod tests {
             (4, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 4,
                 col: 1,
@@ -412,6 +416,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -422,6 +427,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -434,6 +440,7 @@ mod tests {
             (0, 4),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 4,
@@ -444,6 +451,7 @@ mod tests {
             (1, 4),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 4,
@@ -481,6 +489,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -491,6 +500,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -501,6 +511,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -511,6 +522,7 @@ mod tests {
             (1, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 1,
@@ -543,6 +555,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -553,6 +566,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -564,6 +578,7 @@ mod tests {
             (2, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 2,
                 col: 0,
@@ -574,6 +589,7 @@ mod tests {
             (2, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 2,
                 col: 1,
@@ -606,6 +622,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -616,6 +633,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -627,6 +645,7 @@ mod tests {
             (3, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 3,
                 col: 0,
@@ -637,6 +656,7 @@ mod tests {
             (3, 1),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 3,
                 col: 1,
@@ -670,6 +690,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -680,6 +701,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -691,6 +713,7 @@ mod tests {
             (0, 2),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 2,
@@ -701,6 +724,7 @@ mod tests {
             (1, 2),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 2,
@@ -733,6 +757,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -743,6 +768,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -754,6 +780,7 @@ mod tests {
             (0, 3),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 3,
@@ -764,6 +791,7 @@ mod tests {
             (1, 3),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 3,
@@ -797,6 +825,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -809,6 +838,7 @@ mod tests {
             (4, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 4,
                 col: 0,

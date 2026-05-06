@@ -131,6 +131,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: None,
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

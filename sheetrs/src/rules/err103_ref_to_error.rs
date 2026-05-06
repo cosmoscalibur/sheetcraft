@@ -105,6 +105,7 @@ mod tests {
                         col: 0,
                         value: CellValue::Error(ExcelError::Ref),
                         formula: None,
+                        is_array: false,
                         num_fmt: None,
                     },
                 );
@@ -115,6 +116,7 @@ mod tests {
                         col: 2,
                         value: CellValue::Error(ExcelError::NA),
                         formula: None,
+                        is_array: false,
                         num_fmt: None,
                     },
                 );
@@ -125,6 +127,7 @@ mod tests {
                         col: 1,
                         value: CellValue::Number(0.0),
                         formula: Some(Box::from("A1+C1")),
+                        is_array: false,
                         num_fmt: None,
                     },
                 );

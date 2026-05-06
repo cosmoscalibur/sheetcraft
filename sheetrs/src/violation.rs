@@ -49,14 +49,10 @@ pub enum RuleId {
     Ref306,
     /// REF307: Whole Column/Row References
     Ref307,
-    /// REF308: Current Sheet Reference
-    Ref308,
     /// REF309: Reference to Empty Cell
     Ref309,
     /// REF310: Longer Reference Expected
     Ref310,
-    /// REF311: Reference to Pivot
-    Ref311,
 
     // Formula Interruptions (4xx)
     /// INT401: Interrupted by Data
@@ -99,8 +95,6 @@ pub enum RuleId {
     Vul605,
     /// VUL606: Deprecated Function
     Vul606,
-    /// VUL607: Unprotected
-    Vul607,
 
     // Data Issues (7xx)
     /// DATA701: Non-Descriptive Sheet Name
@@ -115,8 +109,6 @@ pub enum RuleId {
     Data705,
     /// DATA706: Numeric Text in Calculation
     Data706,
-    /// DATA707: Validation Missing
-    Data707,
 
     // External References (8xx)
     /// EXT801: External Workbook
@@ -163,10 +155,8 @@ impl RuleId {
             Self::Ref305 => "REF305",
             Self::Ref306 => "REF306",
             Self::Ref307 => "REF307",
-            Self::Ref308 => "REF308",
             Self::Ref309 => "REF309",
             Self::Ref310 => "REF310",
-            Self::Ref311 => "REF311",
             Self::Int401 => "INT401",
             Self::Int402 => "INT402",
             Self::Int403 => "INT403",
@@ -185,14 +175,12 @@ impl RuleId {
             Self::Vul604 => "VUL604",
             Self::Vul605 => "VUL605",
             Self::Vul606 => "VUL606",
-            Self::Vul607 => "VUL607",
             Self::Data701 => "DATA701",
             Self::Data702 => "DATA702",
             Self::Data703 => "DATA703",
             Self::Data704 => "DATA704",
             Self::Data705 => "DATA705",
             Self::Data706 => "DATA706",
-            Self::Data707 => "DATA707",
             Self::Ext801 => "EXT801",
             Self::Ext802 => "EXT802",
             Self::Hid901 => "HID901",
@@ -243,10 +231,8 @@ impl FromStr for RuleId {
             "REF305" => Ok(Self::Ref305),
             "REF306" => Ok(Self::Ref306),
             "REF307" => Ok(Self::Ref307),
-            "REF308" => Ok(Self::Ref308),
             "REF309" => Ok(Self::Ref309),
             "REF310" => Ok(Self::Ref310),
-            "REF311" => Ok(Self::Ref311),
             "INT401" => Ok(Self::Int401),
             "INT402" => Ok(Self::Int402),
             "INT403" => Ok(Self::Int403),
@@ -265,14 +251,12 @@ impl FromStr for RuleId {
             "VUL604" => Ok(Self::Vul604),
             "VUL605" => Ok(Self::Vul605),
             "VUL606" => Ok(Self::Vul606),
-            "VUL607" => Ok(Self::Vul607),
             "DATA701" => Ok(Self::Data701),
             "DATA702" => Ok(Self::Data702),
             "DATA703" => Ok(Self::Data703),
             "DATA704" => Ok(Self::Data704),
             "DATA705" => Ok(Self::Data705),
             "DATA706" => Ok(Self::Data706),
-            "DATA707" => Ok(Self::Data707),
             "EXT801" => Ok(Self::Ext801),
             "EXT802" => Ok(Self::Ext802),
             "HID901" => Ok(Self::Hid901),

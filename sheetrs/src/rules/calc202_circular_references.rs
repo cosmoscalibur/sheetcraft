@@ -344,6 +344,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=A1+1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -366,6 +367,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=B1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -376,6 +378,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: Some(<Box<str>>::from("=A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -400,6 +403,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(B1:B3)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -410,6 +414,7 @@ mod tests {
             (1, 1),
             Cell {
                 formula: Some(<Box<str>>::from("=A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 1,
@@ -433,6 +438,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(A2:A3)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -443,6 +449,7 @@ mod tests {
             (2, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 2,
                 col: 0,

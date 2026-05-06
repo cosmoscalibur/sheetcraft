@@ -113,6 +113,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=UsedRange")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

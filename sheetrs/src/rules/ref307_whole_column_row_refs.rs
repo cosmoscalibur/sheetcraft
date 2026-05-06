@@ -165,6 +165,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(A:A)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -197,6 +198,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(1:1)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -229,6 +231,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(A1:A10)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

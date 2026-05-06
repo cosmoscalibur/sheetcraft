@@ -63,6 +63,11 @@ fn main() -> Result<()> {
         .validate_rules(&valid_tokens)
         .context("Invalid configuration")?;
 
+    // Warn about implicit rule dependencies (e.g., DAT706 needs CALC202)
+    for warning in config.warn_implicit_dependencies() {
+        eprintln!("{}", warning);
+    }
+
     // Create linter and run
     let linter = Linter::with_config(config);
 
