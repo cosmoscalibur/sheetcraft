@@ -71,13 +71,17 @@ pub struct InterruptionRule {
     min_formula_sequence: usize,
     /// Per-sheet collected cell classifications (shared across instances in a group).
     sheet_data: Arc<SheetCellData>,
-    /// Whether this instance is the "collector" that gathers cell data and emits
-    /// violations for all kinds. Only one instance per group should be the collector.
+    /// Whether this instance is the "collector" that gathers cell data.
+    /// Only one instance per group should be the collector.
     is_collector: bool,
+    /// Whether this collector should emit violations for all kinds (group mode)
+    /// or only for `self.kind` (standalone mode from `clone_walker_rule`).
+    emit_all_kinds: bool,
 }
 
 impl InterruptionRule {
     /// Create a standalone instance (used by `clone_walker_rule`).
+    /// Standalone instances collect data and emit violations only for their own kind.
     pub fn new(kind: InterruptionKind, config: &LinterConfig) -> Self {
         let min_seq = config
             .get_param_int("int_min_formula_sequence", None)
@@ -87,6 +91,7 @@ impl InterruptionRule {
             min_formula_sequence: min_seq,
             sheet_data: Arc::new(Mutex::new(HashMap::new())),
             is_collector: true,
+            emit_all_kinds: false,
         }
     }
 
@@ -103,31 +108,56 @@ impl InterruptionRule {
                 min_formula_sequence: min_seq,
                 sheet_data: Arc::clone(&shared),
                 is_collector: true,
+                emit_all_kinds: true,
             },
             Self {
                 kind: InterruptionKind::Empty,
                 min_formula_sequence: min_seq,
                 sheet_data: Arc::clone(&shared),
                 is_collector: false,
+                emit_all_kinds: false,
             },
             Self {
                 kind: InterruptionKind::Other,
                 min_formula_sequence: min_seq,
                 sheet_data: Arc::clone(&shared),
                 is_collector: false,
+                emit_all_kinds: false,
             },
         ]
     }
 
     /// Normalize a formula by converting cell references to R1C1-style offsets.
     /// Relative references become relative offsets; absolute ($) references stay absolute.
+    /// Skips false matches on function names (e.g. LOG10) and sheet qualifiers (e.g. SHEET1!).
     pub(crate) fn normalize_formula(formula: &str, cell_row: u32, cell_col: u32) -> String {
-        // Use a regex that captures the dollar signs to detect absolute refs
+        // Match cell references: optional $ + 1-3 uppercase letters + optional $ + digits.
+        // The {1,3} limit matches valid Excel columns (A–XFD).
         static ABS_REF_RE: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"(\$?)([A-Z]+)(\$?)([0-9]+)").unwrap());
+            LazyLock::new(|| Regex::new(r"(\$?)([A-Z]{1,3})(\$?)([0-9]+)").unwrap());
+
+        let formula_bytes = formula.as_bytes();
 
         ABS_REF_RE
             .replace_all(formula, |caps: &regex::Captures| {
+                let m = caps.get(0).unwrap();
+
+                // Skip if preceded by a letter — part of a function or sheet name
+                // (e.g. LOG10 → LOG is preceded by nothing but "10" is the row part;
+                //  the full match LOG10 would be LOG as col + 10 as row)
+                if m.start() > 0 && formula_bytes[m.start() - 1].is_ascii_alphabetic() {
+                    return m.as_str().to_string();
+                }
+
+                // Skip if followed by ! (sheet qualifier, e.g. S1!A1 → skip S1)
+                // or ( (function call, e.g. IF(...) — unlikely with {1,3} but safe)
+                if m.end() < formula_bytes.len() {
+                    let next = formula_bytes[m.end()];
+                    if next == b'!' || next == b'(' {
+                        return m.as_str().to_string();
+                    }
+                }
+
                 let col_abs = &caps[1] == "$";
                 let col_str = &caps[2];
                 let row_abs = &caps[3] == "$";
@@ -393,6 +423,10 @@ impl WalkerRule for InterruptionRule {
             col_cells.sort_by_key(|(row, _)| *row);
             let ints = Self::find_interruptions(&col_cells, true, col, self.min_formula_sequence);
             for int in ints {
+                // In standalone mode, only emit violations matching self.kind
+                if !self.emit_all_kinds && int.kind != self.kind {
+                    continue;
+                }
                 violations.push(Violation::with_data(
                     rule_id_for(int.kind),
                     ViolationScope::Cell(sheet.sheet_index, CellReference::new(int.row, int.col)),
@@ -417,6 +451,10 @@ impl WalkerRule for InterruptionRule {
             row_cells.sort_by_key(|(col, _)| *col);
             let ints = Self::find_interruptions(&row_cells, false, row, self.min_formula_sequence);
             for int in ints {
+                // In standalone mode, only emit violations matching self.kind
+                if !self.emit_all_kinds && int.kind != self.kind {
+                    continue;
+                }
                 violations.push(Violation::with_data(
                     rule_id_for(int.kind),
                     ViolationScope::Cell(sheet.sheet_index, CellReference::new(int.row, int.col)),

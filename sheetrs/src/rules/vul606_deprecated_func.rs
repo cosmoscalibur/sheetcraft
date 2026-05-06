@@ -116,13 +116,12 @@ impl WalkerRule for DeprecatedFuncRule {
                     .collect()
             });
 
+            let mut map = self.sheet_cells.lock().unwrap();
             for (idx, pattern) in SEARCH_PATTERNS.iter().enumerate() {
                 if formula_upper.contains(pattern.as_str()) {
-                    let mut map = self.sheet_cells.lock().unwrap();
                     map.entry(sheet.sheet_index)
                         .or_default()
                         .push((idx as u8, cell.row, cell.col));
-                    break; // Only count each cell once
                 }
             }
         }
