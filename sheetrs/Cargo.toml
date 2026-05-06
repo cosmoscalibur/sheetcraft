@@ -12,7 +12,6 @@ description = "Core library for Excel/ODS linting with hierarchical violation re
 serde.workspace = true
 toml.workspace = true
 anyhow.workspace = true
-thiserror.workspace = true
 quick-xml.workspace = true
 zip.workspace = true
 reqwest = { workspace = true, optional = true }
@@ -27,4 +26,4 @@ default = ["link-validation"]
 link-validation = ["reqwest"]
 
 [dev-dependencies]
-tempfile = "3.13"
+tempfile = "3.27"

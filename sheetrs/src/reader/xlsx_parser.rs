@@ -151,7 +151,7 @@ pub fn extract_defined_names_from_xlsx(
                 }
             }
             Ok(Event::Text(e)) if in_defined_names && !current_name.is_empty() => {
-                current_ref = e.unescape().unwrap_or_default().to_string();
+                current_ref = e.decode().unwrap_or_default().to_string();
             }
             Ok(Event::End(e)) => match e.name().as_ref() {
                 b"definedName" if !current_name.is_empty() => {
@@ -389,7 +389,7 @@ fn extract_modified_date_xlsx(
                 }
             }
             Event::Text(e) if in_modified => {
-                let date_str = e.unescape()?.to_string();
+                let date_str = e.decode()?.to_string();
                 // Parse ISO 8601 / RFC 3339 format
                 if let Ok(parsed) = DateTime::parse_from_rfc3339(&date_str) {
                     modified_date = Some(parsed.with_timezone(&Utc));
@@ -1239,7 +1239,7 @@ fn read_text_node<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<String>
     let mut text = String::new();
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Text(e) => text.push_str(e.unescape()?.as_ref()),
+            Event::Text(e) => text.push_str(e.decode()?.as_ref()),
             Event::CData(e) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
             Event::End(_) => break,
             Event::Eof => break,
@@ -1934,7 +1934,7 @@ pub fn extract_formulas_from_xlsx(
                 _ => {}
             },
             Event::Text(e) if in_formula => {
-                let formula_text = e.unescape()?.to_string();
+                let formula_text = e.decode()?.to_string();
                 if let Some((r, c)) = parse_cell_ref(&current_cell_ref) {
                     // Check if this cell was marked as shared
                     if let Some(marker) = formulas.get(&(r, c))
@@ -1980,14 +1980,14 @@ mod tests {
     #[test]
     fn test_extract_tables_from_xlsx() {
         use std::io::Cursor;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
 
             let options =
-                FileOptions::<()>::default().compression_method(zip::CompressionMethod::Stored);
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             // Add a table file
             zip.start_file("xl/tables/table1.xml", options).unwrap();
