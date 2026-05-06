@@ -817,7 +817,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                         _ => {}
                     },
                     Event::Text(e) if in_date_style => {
-                        current_format.push_str(e.unescape()?.as_ref());
+                        current_format.push_str(e.decode()?.as_ref());
                     }
                     Event::End(e) => {
                         if e.name().as_ref() == b"number:date-style" {
@@ -1079,7 +1079,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                     },
                     // DATE STYLES: text content within date style
                     Event::Text(e) if in_date_style => {
-                        current_format.push_str(e.unescape()?.as_ref());
+                        current_format.push_str(e.decode()?.as_ref());
                     }
                     // DATE STYLES: end of date-style
                     Event::End(e) if e.name().as_ref() == b"number:date-style" => {
@@ -1451,7 +1451,7 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         loop {
                                             match reader.read_event_into(&mut p_buf)? {
                                                 Event::Text(ref t) => {
-                                                    text_content.push_str(t.unescape()?.as_ref());
+                                                    text_content.push_str(t.decode()?.as_ref());
                                                 }
                                                 Event::End(ref pe)
                                                     if pe.name().as_ref() == b"text:p" =>
@@ -2017,7 +2017,7 @@ fn extract_modified_date_ods(
                 }
             }
             Event::Text(e) if in_date => {
-                let date_str = e.unescape()?.to_string();
+                let date_str = e.decode()?.to_string();
                 // Parse ISO 8601 / RFC 3339 format
                 if let Ok(parsed) = DateTime::parse_from_rfc3339(&date_str) {
                     modified_date = Some(parsed.with_timezone(&Utc));
