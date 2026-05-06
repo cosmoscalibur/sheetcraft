@@ -146,6 +146,7 @@ mod tests {
             col,
             value,
             formula: formula.map(Box::from),
+            is_array: false,
             num_fmt: None,
         }
     }

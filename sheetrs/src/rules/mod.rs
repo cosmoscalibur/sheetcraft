@@ -24,10 +24,8 @@ pub mod ref304_large_used_range;
 pub mod ref305_blank_rows_columns;
 pub mod ref306_unused_sheets;
 pub mod ref307_whole_column_row_refs;
-pub mod ref308_current_sheet_ref;
 pub mod ref309_ref_to_empty_cell;
 pub mod ref310_longer_ref_expected;
-pub mod ref311_reference_to_pivot;
 
 // Rule implementations - Formula Interruptions (4xx)
 pub mod int401_interrupted_by_data;
@@ -52,7 +50,6 @@ pub mod vul603_empty_string_test;
 pub mod vul604_error_prone_functions;
 pub mod vul605_legacy_array;
 pub mod vul606_deprecated_func;
-pub mod vul607_unprotected;
 
 // Rule implementations - Data Issues (7xx)
 pub mod dat701_sheet_names;
@@ -61,7 +58,6 @@ pub mod dat703_date_formats;
 pub mod dat704_long_text;
 pub mod dat705_unnecessary_space;
 pub mod dat706_numeric_text_calc;
-pub mod dat707_validation_miss;
 
 // Rule implementations - External References (8xx)
 pub mod ext801_external_workbook;
@@ -99,6 +95,8 @@ pub struct LinterContext {
     pub error_cells: HashMap<(u16, u32, u32), ExcelError>,
     /// Cells on a circular reference path (populated by calc202 `on_workbook_end`).
     pub circular_cells: HashSet<(u16, u32, u32)>,
+    /// Cells containing numeric-looking text values (populated by dat706).
+    pub numeric_text_cells: HashSet<(u16, u32, u32)>,
 }
 
 /// Trait for optimized single-pass walker rules

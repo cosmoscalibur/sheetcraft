@@ -816,13 +816,14 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
 
                         let num_fmt = s_attr.and_then(|idx| self.styles.get(idx).cloned());
 
-                        let (value, mut formula, shared_si, shared_ref) = parse_cell_contents(
-                            &mut reader,
-                            &t_attr,
-                            &self.shared_strings,
-                            &self.styles,
-                            num_fmt.as_deref(),
-                        )?;
+                        let (value, mut formula, shared_si, shared_ref, is_array_formula) =
+                            parse_cell_contents(
+                                &mut reader,
+                                &t_attr,
+                                &self.shared_strings,
+                                &self.styles,
+                                num_fmt.as_deref(),
+                            )?;
 
                         if let Some(si) = shared_si {
                             if let Some(f) = formula.as_ref() {
@@ -872,6 +873,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                             col,
                             value: value.clone(),
                             formula: None,
+                            is_array: is_array_formula,
                             num_fmt,
                         };
                         if let Some(mut f) = formula {
@@ -972,6 +974,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                                 col,
                                 value: CellValue::Empty,
                                 formula: None,
+                                is_array: false,
                                 num_fmt,
                             },
                         );
@@ -1056,7 +1059,7 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
 }
 
 // Type alias to avoid clippy::type_complexity warning
-type ParsedCellData = (CellValue, Option<String>, Option<u32>, Option<String>);
+type ParsedCellData = (CellValue, Option<String>, Option<u32>, Option<String>, bool);
 
 fn parse_cell_contents<R: std::io::BufRead>(
     reader: &mut Reader<R>,
@@ -1197,7 +1200,7 @@ fn parse_cell_contents<R: std::io::BufRead>(
         }
     }
 
-    Ok((value, formula, shared_si, shared_ref))
+    Ok((value, formula, shared_si, shared_ref, is_array_formula))
 }
 
 pub fn extract_shared_strings(

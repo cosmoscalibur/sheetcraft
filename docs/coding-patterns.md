@@ -84,6 +84,14 @@ distinguish them from relative references. The regex skips false matches
 on function names (e.g., `LOG10`) and sheet qualifiers (e.g., `SHEET1!`)
 by checking surrounding context.
 
+### Argument Separator Normalization
+
+ODS uses `;` as the function argument separator while XLSX uses `,`. The ODS
+parser normalizes `;` → `,` during `normalize_ods_reference()` (via
+`normalize_arg_separator()`), preserving semicolons inside string literals.
+This ensures rules receive Excel-style formulas regardless of input format
+(SoC: parser handles format dirt, rules stay format-agnostic).
+
 ### Gap Policy (Interruption Context Boundaries)
 
 When scanning for interruptions, `find_interruptions` must decide how far

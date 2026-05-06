@@ -173,6 +173,11 @@ pub struct Cell {
     /// Boxed to minimize `Cell` struct size: `Option<Box<str>>` is 8 bytes vs
     /// `Option<String>`'s 24 bytes, and formula strings are write-once/read-many.
     pub formula: Option<Box<str>>,
+    /// Whether this cell is a legacy CSE (Ctrl+Shift+Enter) array formula.
+    ///
+    /// XLSX: set when `<f t="array">` is present.
+    /// ODS: set when `table:number-matrix-columns-spanned` is present.
+    pub is_array: bool,
     /// The number format string applied to the cell (e.g., "0.00", "mm/dd/yyyy").
     ///
     /// Interned via `Arc<str>` so cells sharing the same format reuse a single allocation.

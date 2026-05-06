@@ -25,7 +25,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **CALC201** (Hardcoded Number) | `cell::formula` | `=A1*1.5` | - | ✅ | ✅ | Detects static numeric constants embedded within formula logic. |
 | **CALC202** (Circular Reference) | `cell::formula (inter)` | `A1=B1, B1=A1` | - | ✅ | ✅ | Detects recursive dependency loops that prevent successful calculation. |
 | **CALC203** (Double Operator) | `cell::formula` | `=1++2` | `!ERR102` | ❌ | ❌ | Flags redundant operator sequences indicating potential typos. |
-| **CALC204** (Approximate Lookup) | `cell::formula" | "VLOOKUP(A1, B:C, 2)`| - | ❌ | ❌ | Identifies lookup functions missing the strict exact-match flag. |
+| **CALC204** (Approximate Lookup) | `cell::formula" | "VLOOKUP(A1, B:C, 2)`| - | ✅ | ✅ | Identifies lookup functions missing the strict exact-match flag. |
 | **CALC205** (Double Count) | `cell::formula` | `SUM(A1:A5)+A3` | - | ❌ | ❌ | Flags redundant inclusion of specific cells in a summation logic. |
 
 ## 3. Reference Issues (REF3xx)
@@ -39,10 +39,8 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **REF305** (Blank Row or Column) | `sheet::layout` | Data -> 100 empty rows| `!REF304` | ✅ | ✅ | Detects excessive spacing. Only triggers if Large Used Range is not meta-flagged. |
 | **REF306** (Unused Sheet) | `sheet::ref (inter)` | No cross-sheet refs | `!REF303` | ✅ | ✅ | Identifies worksheets not referenced anywhere in the workbook. |
 | **REF307** (Whole Column or Row Reference) | `cell::formula` | `=SUM(A:A)` | - | ✅ | ✅ | Flags formulas referencing entire axes, increasing calculation cost. |
-| **REF308** (Current Sheet Reference) | `cell::formula` | `=Sheet1!A1` in S1 | - | ❌ | ❌ | Identifies redundant worksheet prefixes in local cell references. |
-| **REF309** (Reference to Empty Cell) | `cell::formula (inter)`| `=A1` (A1 is blank) | `!REF303` | ❌ | ❌ | Identifies formula dependencies that point to null/blank cells. |
+| **REF309** (Reference to Empty Cell) | `cell::formula (inter)`| `=A1` (A1 is blank) | `!REF303` | ✅ | ✅ | Identifies formula dependencies that point to null/blank cells. |
 | **REF310** (Longer Cell Reference Expected) | `cell::formula` | `A1:A5` + data A6 | - | ❌ | ❌ | Flags small range references adjacent to similar data types. |
-| **REF311** (Reference to Pivot) | `cell::formula` | `=Sheet1!D5` (Pivot) | - | ❌ | ❌ | Detects direct cell links to Pivot results instead of API functions. |
 
 ## 4. Formula Interruptions (INT4xx)
 
@@ -74,9 +72,8 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **VUL602** (Volatile Function) | `cell::formula` | `TODAY()`, `RAND()` | - | ✅ | ✅ | Detects non-deterministic functions causing frequent recalculations. |
 | **VUL603** (Empty String Test) | `cell::formula` | `IF(A1="", ...)` | - | ✅ | ✅ | Recommends `ISBLANK` over string literal tests for cell status. |
 | **VUL604** (Error Prone Functions) | `cell::formula` | `VLOOKUP`, `HLOOKUP` | - | 🚧 | Flags lookup functions missing exact-match flag or using brittle refs. |
-| **VUL605** (Legacy Array) | `cell::formula` | `{=SUM(...)}` | - | ❌ | Detects antiquated CSE formulas that may fail in modern versions. |
-| **VUL606** (Deprecated Func) | `cell::formula` | `CONCATENATE` | - | ❌ | Identifies functions superseded by modern alternatives. |
-| **VUL607** (Unprotected) | `cell::style` | Formula in unlocked | - | ❌ | Flags formulas in cells capable of being overwritten accidentally. |
+| **VUL605** (Legacy Array) | `cell::formula` | `{=SUM(...)}` | - | ✅ | Detects antiquated CSE formulas that may fail in modern versions. |
+| **VUL606** (Deprecated Func) | `cell::formula` | `CONCATENATE` | - | ✅ | Identifies functions superseded by modern alternatives. |
 
 ## 7. Data Issues (DATA7xx)
 
@@ -87,8 +84,7 @@ This report compares `sheetrs` linter rules with [PerfectXL Risk Finder categori
 | **DATA703** (Inconsistent Date Format) | `cell::content` | Date val in Num fmt | - | ✅ | ✅ | Detects formatting drift in cells containing temporal data. |
 | **DATA704** (Long Text Cell) | `cell::value` | > 32k chars | - | ✅ | ✅ | Flags cells storing excessively large strings for the grid format. |
 | **DATA705** (Unnecessary Space) | `cell::value" | "" value "" ` | - | ✅ | ✅ | Detects invisible white-space padding at the start/end of values. |
-| **DATA706** (Numeric Text Calculation)| `cell::formula" | "=""10"" + 1` | - | ❌ | ❌ | Identifies mathematical operations involving stringed numbers. |
-| **DATA707** (Data Validation Rule not Followed) | `cell::value` | Invalid input | - | ❌ | ❌ | Flags data points violating defined spreadsheet constraints. |
+| **DATA706** (Numeric Text Calculation)| `cell::formula" | "=""10"" + 1` | - | ✅ | ✅ | Identifies mathematical operations involving stringed numbers. |
 
 ## 8. External References (EXT8xx)
 

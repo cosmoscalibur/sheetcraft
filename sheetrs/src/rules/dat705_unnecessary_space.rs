@@ -71,6 +71,7 @@ mod tests {
             col,
             value: CellValue::Text(Arc::from(text)),
             formula: None,
+            is_array: false,
             num_fmt: None,
         }
     }
@@ -156,6 +157,7 @@ mod tests {
                 col: 0,
                 value: CellValue::Number(42.0),
                 formula: None,
+                is_array: false,
                 num_fmt: None,
             },
         );

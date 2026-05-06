@@ -22,10 +22,8 @@ pub const DEFAULT_ACTIVE_RULES: &[RuleId] = &[
     RuleId::Ref305,
     RuleId::Ref306,
     RuleId::Ref307,
-    RuleId::Ref308,
     RuleId::Ref309,
     RuleId::Ref310,
-    RuleId::Ref311,
     RuleId::Int401,
     RuleId::Int402,
     RuleId::Int403,
@@ -44,14 +42,12 @@ pub const DEFAULT_ACTIVE_RULES: &[RuleId] = &[
     RuleId::Vul604,
     RuleId::Vul605,
     RuleId::Vul606,
-    RuleId::Vul607,
     RuleId::Data701,
     RuleId::Data702,
     RuleId::Data703,
     RuleId::Data704,
     RuleId::Data705,
     RuleId::Data706,
-    RuleId::Data707,
     RuleId::Ext801,
     RuleId::Ext802,
     RuleId::Hid901,
@@ -136,10 +132,8 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(ref305_blank_rows_columns::BlankRowsColumnsRule::new()),
         Box::new(ref306_unused_sheets::UnusedSheetsRule),
         Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
-        Box::new(ref308_current_sheet_ref::CurrentSheetRefRule),
         Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
         Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
-        Box::new(ref311_reference_to_pivot::ReferenceToPivotRule),
     ];
 
     // Formula Interruptions (4xx) — shared state group to avoid 3× work
@@ -172,9 +166,8 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(vul604_error_prone_functions::ErrorProneFunctionsRule::new(
             config,
         )),
-        Box::new(vul605_legacy_array::LegacyArrayRule),
+        Box::new(vul605_legacy_array::LegacyArrayRule::new()),
         Box::new(vul606_deprecated_func::DeprecatedFuncRule::new()),
-        Box::new(vul607_unprotected::UnprotectedRule),
         // Data Issues (7xx)
         Box::new(dat701_sheet_names::NonDescriptiveSheetNameRule::new(config)),
         Box::new(dat702_numeric_formats::InconsistentNumberFormatRule::new()),
@@ -182,7 +175,6 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(dat704_long_text::LongTextCellRule::new(config)),
         Box::new(dat705_unnecessary_space::UnnecessarySpaceRule),
         Box::new(dat706_numeric_text_calc::NumericTextCalcRule),
-        Box::new(dat707_validation_miss::ValidationMissRule),
         // External References (8xx)
         Box::new(ext801_external_workbook::ExternalWorkbooksRule::new()),
         Box::new(ext802_web_urls::WebUrlsRule::new(config)),
@@ -253,10 +245,8 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Vec<Bo
         RuleId::Ref307 => vec![Box::new(
             ref307_whole_column_row_refs::WholeColumnRowRefsRule::new(),
         )],
-        RuleId::Ref308 => vec![Box::new(ref308_current_sheet_ref::CurrentSheetRefRule)],
         RuleId::Ref309 => vec![Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule)],
         RuleId::Ref310 => vec![Box::new(ref310_longer_ref_expected::LongerRefExpectedRule)],
-        RuleId::Ref311 => vec![Box::new(ref311_reference_to_pivot::ReferenceToPivotRule)],
         // INT401–403: always create the full shared-state group together.
         // When any one of INT401/402/403 is cloned, emit the whole group.
         // Duplicates are prevented in lint_workbook by deduplicating rule IDs.
@@ -298,9 +288,8 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Vec<Bo
         RuleId::Vul604 => vec![Box::new(
             vul604_error_prone_functions::ErrorProneFunctionsRule::new(config),
         )],
-        RuleId::Vul605 => vec![Box::new(vul605_legacy_array::LegacyArrayRule)],
+        RuleId::Vul605 => vec![Box::new(vul605_legacy_array::LegacyArrayRule::new())],
         RuleId::Vul606 => vec![Box::new(vul606_deprecated_func::DeprecatedFuncRule::new())],
-        RuleId::Vul607 => vec![Box::new(vul607_unprotected::UnprotectedRule)],
         RuleId::Data701 => vec![Box::new(
             dat701_sheet_names::NonDescriptiveSheetNameRule::new(config),
         )],
@@ -313,7 +302,6 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Vec<Bo
         RuleId::Data704 => vec![Box::new(dat704_long_text::LongTextCellRule::new(config))],
         RuleId::Data705 => vec![Box::new(dat705_unnecessary_space::UnnecessarySpaceRule)],
         RuleId::Data706 => vec![Box::new(dat706_numeric_text_calc::NumericTextCalcRule)],
-        RuleId::Data707 => vec![Box::new(dat707_validation_miss::ValidationMissRule)],
         RuleId::Ext801 => vec![Box::new(
             ext801_external_workbook::ExternalWorkbooksRule::new(),
         )],

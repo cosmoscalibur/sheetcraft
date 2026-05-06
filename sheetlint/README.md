@@ -52,7 +52,7 @@ disabled_rules = ["UX", "SM"]
 | **CALC201** | Hardcoded numbers in formulas | ✅ | `ignore_hardcoded_num_values`, `ignore_hardcoded_int_values`, `ignore_hardcoded_power_of_ten` |
 | **CALC202** | Circular reference | ✅ | None |
 | **CALC203** | Double operator | ❌ | None |
-| **CALC204** | Approximate lookup | ❌ | None |
+| **CALC204** | Approximate lookup | ✅ | None |
 | **CALC205** | Double count | ❌ | None |
 
 ### 3. Reference Issues (REF3xx)
@@ -66,10 +66,8 @@ disabled_rules = ["UX", "SM"]
 | **REF305** | Blank row or column | ✅ | None |
 | **REF306** | Unused sheet | ✅ | None |
 | **REF307** | Whole column or row reference | ✅ | None |
-| **REF308** | Current sheet reference | ❌ | None |
-| **REF309** | Reference to empty cell | ❌ | None |
+| **REF309** | Reference to empty cell | ✅ | None |
 | **REF310** | Longer cell reference expected | ❌ | None |
-| **REF311** | Reference to Pivot | ❌ | None |
 
 ### 4. Formula Interruptions (INT4xx)
 
@@ -101,9 +99,8 @@ disabled_rules = ["UX", "SM"]
 | **VUL602** | Volatile function | ✅ |
 | **VUL603** | Empty string test (="") | ✅ |
 | **VUL604** | Error Prone Functions | 🚧 |
-| **VUL605** | Legacy array | ❌ |
-| **VUL606** | Deprecated func | ❌ |
-| **VUL607** | Unprotected | ❌ |
+| **VUL605** | Legacy array | ✅ |
+| **VUL606** | Deprecated func | ✅ |
 
 ### 7. Data Issues (DATA7xx)
 
@@ -114,8 +111,7 @@ disabled_rules = ["UX", "SM"]
 | **DATA703** | Inconsistent date format | ✅ | `date_format` |
 | **DATA704** | Long text cells | ✅ | `max_text_length` |
 | **DATA705** | Unnecessary space | ❌ | None |
-| **DATA706** | Numeric text calculation | ❌ | None |
-| **DATA707** | Data validation miss | ❌ | None |
+| **DATA706** | Numeric text calculation | ✅ | None |
 | **DATA708** | Sensitive data | ❌ | None |
 
 ### 8. External References (EXT8xx)

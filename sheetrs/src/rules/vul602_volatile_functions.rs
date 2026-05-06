@@ -163,6 +163,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=NOW()")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -195,6 +196,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=RAND()")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -205,6 +207,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=TODAY()")),
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
@@ -236,6 +239,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=now()")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

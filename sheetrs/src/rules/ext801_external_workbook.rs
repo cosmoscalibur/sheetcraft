@@ -167,6 +167,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=[1]Sheet1!A1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

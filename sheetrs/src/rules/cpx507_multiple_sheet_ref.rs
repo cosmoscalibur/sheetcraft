@@ -185,6 +185,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=Sheet1!A1+Sheet2!B2+Sheet3!C3")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -218,6 +219,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=Sheet1!A1+Sheet2!B2")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,

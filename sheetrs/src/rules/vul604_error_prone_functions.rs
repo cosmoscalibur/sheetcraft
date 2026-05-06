@@ -70,6 +70,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=VLOOKUP(A1, B:C, 2, FALSE)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -80,6 +81,7 @@ mod tests {
             (0, 1),
             Cell {
                 formula: Some(<Box<str>>::from("=HLOOKUP(A1, B:C, 2, FALSE)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 1,
@@ -90,6 +92,7 @@ mod tests {
             (0, 2),
             Cell {
                 formula: Some(<Box<str>>::from("=SUM(A1:A10)")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 2,

@@ -153,6 +153,7 @@ mod tests {
                 (row, 0),
                 Cell {
                     formula: Some(<Box<str>>::from("=A1+B1")),
+                    is_array: false,
                     num_fmt: None,
                     row,
                     col: 0,
@@ -186,6 +187,7 @@ mod tests {
             (0, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=A1+B1")),
+                is_array: false,
                 num_fmt: None,
                 row: 0,
                 col: 0,
@@ -196,6 +198,7 @@ mod tests {
             (1, 0),
             Cell {
                 formula: Some(<Box<str>>::from("=A2+B2")),
+                is_array: false,
                 num_fmt: None,
                 row: 1,
                 col: 0,
