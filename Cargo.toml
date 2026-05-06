@@ -30,5 +30,5 @@ quick-xml = "0.39"
 zip = { version = "8.3", default-features = false, features = ["deflate"] }
 
 # HTTP client for link validation
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.13", features = ["blocking"] }
 regex = "1.12"
