@@ -1,6 +1,7 @@
 //! Linter rule system
 
 pub mod helpers;
+pub mod parser_utils;
 pub mod registry;
 pub mod walker;
 

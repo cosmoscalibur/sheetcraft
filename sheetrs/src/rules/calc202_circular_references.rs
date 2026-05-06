@@ -2,6 +2,7 @@
 //!
 //! Description: Detects recursive dependency loops that prevent successful calculation.
 
+use super::parser_utils::{CELL_REF_PATTERN, parse_cell_coords};
 use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::reader::{Cell, Sheet, Workbook};
 use crate::violation::{
@@ -9,19 +10,6 @@ use crate::violation::{
 };
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
-
-/// Compiled cell-reference pattern, shared across all rule instances.
-///
-/// Matches cell references like A1, $A$1, Sheet1!A1, 'Sheet Name'!A1, A1:B2.
-/// Groups: 1=sheet wrapper, 2=quoted sheet, 3=unquoted sheet,
-///         4=start col, 5=start row, 6=end col (opt), 7=end row (opt).
-static CELL_REF_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?:('([^']+)'|([A-Za-z0-9_\.]+))!)?\$?([A-Za-z]+)\$?([0-9]+)(?::\$?([A-Za-z]+)\$?([0-9]+))?",
-    )
-    .expect("CALC202 cell reference regex must compile")
-});
 
 /// Rule that detects circular references in formulas.
 ///
@@ -184,7 +172,7 @@ fn extract_cell_references(
             let col_str = col_match.as_str();
             let row_str = row_match.as_str();
 
-            let (start_row, start_col) = match parse_components(row_str, col_str) {
+            let (start_row, start_col) = match parse_cell_coords(row_str, col_str) {
                 Some(coords) => coords,
                 None => continue,
             };
@@ -193,7 +181,7 @@ fn extract_cell_references(
                 let end_col_str = end_col_match.as_str();
                 let end_row_str = end_row_match.as_str();
 
-                if let Some((end_row, end_col)) = parse_components(end_row_str, end_col_str) {
+                if let Some((end_row, end_col)) = parse_cell_coords(end_row_str, end_col_str) {
                     // Only track corner cells to prevent memory issues
                     references.push((sheet_index, start_row, start_col));
                     references.push((sheet_index, end_row, end_col));
@@ -205,21 +193,6 @@ fn extract_cell_references(
     }
 
     references
-}
-
-fn parse_components(row_str: &str, col_str: &str) -> Option<(u32, u32)> {
-    let row = row_str.parse::<u32>().ok()?;
-    let mut col = 0u32;
-    for ch in col_str.chars() {
-        if ch.is_ascii_alphabetic() {
-            col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        }
-    }
-    if col == 0 {
-        return None;
-    }
-
-    Some((row.saturating_sub(1), col.saturating_sub(1)))
 }
 
 #[derive(PartialEq, Clone, Copy)]
