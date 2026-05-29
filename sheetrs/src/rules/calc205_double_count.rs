@@ -125,6 +125,13 @@ impl WalkerRule for DoubleCountRule {
     }
 }
 
+/// A parsed range argument with its sheet qualifier and coordinates.
+struct ParsedRange {
+    display: String,
+    sheet_qualifier: String,
+    coords: (u32, u32, u32, u32),
+}
+
 /// Extract range arguments from a function call and check all pairs for overlap.
 ///
 /// Returns `Some(DoubleCountData)` with the first overlapping pair found,
@@ -136,25 +143,34 @@ fn find_overlapping_args(
 ) -> Option<DoubleCountData> {
     let args = extract_args(formula, paren_pos)?;
 
-    // Parse each argument as a range reference; skip non-parseable args
-    let parsed_ranges: Vec<(String, (u32, u32, u32, u32))> = args
+    // Parse each argument as a range reference; skip non-parseable args.
+    // Track sheet qualifier to avoid false positives on cross-sheet refs.
+    let parsed_ranges: Vec<ParsedRange> = args
         .iter()
         .filter_map(|arg| {
             let trimmed = arg.trim();
-            // Strip sheet qualifier if present (e.g., Sheet1!A1:B10 → A1:B10)
-            let range_part = trimmed.rsplit_once('!').map_or(trimmed, |(_, range)| range);
-            parse_formula_range(range_part).map(|coords| (trimmed.to_string(), coords))
+            let (sheet_qualifier, range_part) = trimmed
+                .rsplit_once('!')
+                .map_or(("", trimmed), |(sheet, range)| (sheet, range));
+            parse_formula_range(range_part).map(|coords| ParsedRange {
+                display: trimmed.to_string(),
+                sheet_qualifier: sheet_qualifier.to_string(),
+                coords,
+            })
         })
         .collect();
 
-    // Check all pairs
+    // Check all pairs — only compare ranges on the same sheet
     for i in 0..parsed_ranges.len() {
         for j in (i + 1)..parsed_ranges.len() {
-            if ranges_overlap(parsed_ranges[i].1, parsed_ranges[j].1) {
+            if parsed_ranges[i].sheet_qualifier != parsed_ranges[j].sheet_qualifier {
+                continue; // Different sheets cannot overlap
+            }
+            if ranges_overlap(parsed_ranges[i].coords, parsed_ranges[j].coords) {
                 return Some(DoubleCountData {
                     function: func_name.to_string(),
-                    range_a: parsed_ranges[i].0.clone(),
-                    range_b: parsed_ranges[j].0.clone(),
+                    range_a: parsed_ranges[i].display.clone(),
+                    range_b: parsed_ranges[j].display.clone(),
                 });
             }
         }
@@ -296,6 +312,19 @@ mod tests {
     fn test_dsum_no_false_positive() {
         // DSUM should not match SUM
         let sheet = make_sheet(vec![make_formula_cell(0, 0, "DSUM(A1:A10,A5:A15)")]);
+        let violations = run_rule(&sheet);
+
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cross_sheet_no_false_positive() {
+        // Same coordinates on different sheets should NOT overlap
+        let sheet = make_sheet(vec![make_formula_cell(
+            0,
+            0,
+            "SUM(Sheet1!A1:A10,Sheet2!A1:A10)",
+        )]);
         let violations = run_rule(&sheet);
 
         assert_eq!(violations.len(), 0);
