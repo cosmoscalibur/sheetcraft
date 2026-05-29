@@ -133,7 +133,9 @@ pub fn create_all_walker_rules(config: &LinterConfig) -> Vec<Box<dyn WalkerRule>
         Box::new(ref306_unused_sheets::UnusedSheetsRule),
         Box::new(ref307_whole_column_row_refs::WholeColumnRowRefsRule::new()),
         Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule),
-        Box::new(ref310_longer_ref_expected::LongerRefExpectedRule),
+        Box::new(ref310_longer_ref_expected::LongerRefExpectedRule::new(
+            config,
+        )),
     ];
 
     // Formula Interruptions (4xx) — shared state group to avoid 3× work
@@ -246,7 +248,9 @@ pub fn clone_walker_rule(rule: &dyn WalkerRule, config: &LinterConfig) -> Vec<Bo
             ref307_whole_column_row_refs::WholeColumnRowRefsRule::new(),
         )],
         RuleId::Ref309 => vec![Box::new(ref309_ref_to_empty_cell::RefToEmptyCellRule)],
-        RuleId::Ref310 => vec![Box::new(ref310_longer_ref_expected::LongerRefExpectedRule)],
+        RuleId::Ref310 => vec![Box::new(
+            ref310_longer_ref_expected::LongerRefExpectedRule::new(config),
+        )],
         // INT401–403: always create the full shared-state group together.
         // When any one of INT401/402/403 is cloned, emit the whole group.
         // Duplicates are prevented in lint_workbook by deduplicating rule IDs.
