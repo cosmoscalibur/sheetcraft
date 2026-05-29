@@ -120,6 +120,23 @@ Rules may accept configuration parameters via `LinterConfig`:
   coercion to number) is not flagged by CALC203.
 - `int_min_formula_sequence` (int, default 3) — Minimum formula run length
   for INT401–403 to consider a sequence.
+- `ref310_min_adjacent_data` (int, default 1) — Minimum number of contiguous
+  adjacent data cells beyond a range boundary to trigger REF310 (Longer Ref
+  Expected). PerfectXL uses 1.
+
+### Shared Formula Helpers
+
+`rules/helpers.rs` provides formula-parsing utilities shared across rules:
+
+- **`is_inside_string(formula, pos)`** — Check if a byte position is inside
+  a `"..."` string literal. Used to skip false function matches.
+- **`extract_args(formula, paren_pos)`** — Extract top-level function
+  arguments by balanced parenthesis counting. Handles nested calls and
+  string literals. Used by CALC204, CALC205.
+- **`parse_formula_range(range_str)`** — Parse a range reference (e.g.,
+  `A1:B10`, `$A$1`) into 0-based `(start_row, start_col, end_row, end_col)`.
+  Strips `$` signs. Used by CALC205.
+
 
 ## Performance Guidelines
 
