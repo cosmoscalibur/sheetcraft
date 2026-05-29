@@ -7,6 +7,7 @@
 //! as this rule re-uses the same `CELL_REF_PATTERN` regex to extract range
 //! references from formulas.
 
+use super::helpers::{CELL_REF_PATTERN, parse_cell_coords};
 use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::config::LinterConfig;
 use crate::reader::Workbook;
@@ -14,21 +15,7 @@ use crate::reader::workbook::CellValue;
 use crate::violation::{
     CellReference, FormatContext, RuleId, Severity, Violation, ViolationData, ViolationScope,
 };
-use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
-
-/// Compiled cell-reference pattern for extracting range references from formulas.
-///
-/// Matches cell references like A1, $A$1, Sheet1!A1, A1:B2.
-/// Groups: 1=sheet wrapper, 2=quoted sheet, 3=unquoted sheet,
-///         4=start col, 5=start row, 6=end col (opt), 7=end row (opt).
-static CELL_REF_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?:('([^']+)'|([A-Za-z0-9_\.]+))!)?\$?([A-Za-z]+)\$?([0-9]+)(?::\$?([A-Za-z]+)\$?([0-9]+))?",
-    )
-    .expect("REF310 cell reference regex must compile")
-});
 
 /// Rule that identifies suspiciously short references.
 pub struct LongerRefExpectedRule {
@@ -75,19 +62,6 @@ impl ViolationData for LongerRefData {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-}
-
-/// Parse column letters (e.g., "A", "BC") into a 0-based column index.
-fn col_letters_to_index(col_str: &str) -> Option<u32> {
-    let mut col = 0u32;
-    for ch in col_str.chars() {
-        if ch.is_ascii_alphabetic() {
-            col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        } else {
-            return None;
-        }
-    }
-    if col == 0 { None } else { Some(col - 1) }
 }
 
 /// Determine the value-type category of a cell for type-matching suppression.
@@ -185,23 +159,17 @@ fn extract_range_refs(
         let (Some(c_match), Some(r_match)) = (cap.get(4), cap.get(5)) else {
             continue;
         };
-        let (start_col_str, start_row_str) = (c_match.as_str(), r_match.as_str());
-        let Some(start_col) = col_letters_to_index(start_col_str) else {
+        let Some((start_row, start_col)) = parse_cell_coords(r_match.as_str(), c_match.as_str())
+        else {
             continue;
         };
-        let Some(start_row_1based) = start_row_str.parse::<u32>().ok() else {
-            continue;
-        };
-        let start_row = start_row_1based.saturating_sub(1);
 
         // Parse end coordinates
-        let Some(end_col) = col_letters_to_index(end_col_match.as_str()) else {
+        let Some((end_row, end_col)) =
+            parse_cell_coords(end_row_match.as_str(), end_col_match.as_str())
+        else {
             continue;
         };
-        let Some(end_row_1based) = end_row_match.as_str().parse::<u32>().ok() else {
-            continue;
-        };
-        let end_row = end_row_1based.saturating_sub(1);
 
         let display = cap.get(0).map_or("", |m| m.as_str()).to_string();
 
