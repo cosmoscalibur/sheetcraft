@@ -81,6 +81,120 @@ pub fn format_single_range(cells: &[(u32, u32)]) -> String {
     format!("{start}:{end}")
 }
 
+/// Check if a position in a formula string is inside a double-quoted string literal.
+///
+/// Scans from the start of `formula` up to `pos`, toggling an in-string flag
+/// on each `"` character. Returns `true` if `pos` falls inside a literal.
+pub fn is_inside_string(formula: &str, pos: usize) -> bool {
+    let mut in_string = false;
+    for (i, ch) in formula.char_indices() {
+        if i >= pos {
+            break;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+        }
+    }
+    in_string
+}
+
+/// Extract function arguments by balancing parentheses from `paren_pos`.
+///
+/// `paren_pos` is the index of the opening `(` in `formula`.
+/// Returns `None` if the parentheses are unbalanced.
+/// Returns `Some(Vec<String>)` with each top-level argument as a string.
+///
+/// Nested parentheses (e.g., `SUM(IF(cond,A1,A2),B1)`) are preserved inside
+/// the argument string — only top-level commas split arguments.
+pub fn extract_args(formula: &str, paren_pos: usize) -> Option<Vec<String>> {
+    let bytes = formula.as_bytes();
+    if paren_pos >= bytes.len() || bytes[paren_pos] != b'(' {
+        return None;
+    }
+
+    let mut depth = 0;
+    let mut args = Vec::new();
+    let mut current_arg = String::new();
+    let mut in_string = false;
+
+    // SAFETY: We only match ASCII chars (, ) , " whose byte values (0x22, 0x28–0x2C)
+    // cannot appear inside multi-byte UTF-8 sequences (all continuation bytes are >= 0x80).
+    for &b in &bytes[paren_pos..] {
+        match b {
+            b'"' => {
+                in_string = !in_string;
+                current_arg.push(b as char);
+            }
+            b'(' if !in_string => {
+                depth += 1;
+                if depth > 1 {
+                    current_arg.push('(');
+                }
+            }
+            b')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    // End of function call
+                    if !current_arg.is_empty() || !args.is_empty() {
+                        args.push(current_arg);
+                    }
+                    return Some(args);
+                }
+                current_arg.push(')');
+            }
+            b',' if !in_string && depth == 1 => {
+                args.push(current_arg);
+                current_arg = String::new();
+            }
+            _ => {
+                if depth >= 1 {
+                    current_arg.push(b as char);
+                }
+            }
+        }
+    }
+
+    None // Unbalanced parentheses
+}
+
+/// Parse a range reference string (e.g., `A1:B10`, `$A$1:$B$10`, or `A1`)
+/// into 0-based coordinates `(start_row, start_col, end_row, end_col)`.
+///
+/// Strips `$` signs before delegating to `parse_cell_ref`. For single-cell
+/// references, start and end coordinates are equal.
+///
+/// Returns `None` if the reference cannot be parsed (e.g., whole-column `A:A`).
+pub fn parse_formula_range(range_str: &str) -> Option<(u32, u32, u32, u32)> {
+    use crate::reader::parser_utils::parse_cell_ref;
+
+    // Strip $ signs for absolute reference handling
+    let cleaned: String = range_str.chars().filter(|c| *c != '$').collect();
+
+    // Validate each part looks like a cell ref before passing to parse_cell_ref.
+    // Excel columns have at most 3 letters (max: XFD). Reject anything with
+    // more alpha chars to prevent arithmetic overflow in parse_cell_ref.
+    let validate_ref = |s: &str| -> bool {
+        let alpha_count = s.chars().take_while(|c| c.is_ascii_alphabetic()).count();
+        alpha_count > 0 && alpha_count <= 3 && s.len() > alpha_count
+    };
+
+    if let Some((start, end)) = cleaned.split_once(':') {
+        if !validate_ref(start) || !validate_ref(end) {
+            return None;
+        }
+        let (sr, sc) = parse_cell_ref(start)?;
+        let (er, ec) = parse_cell_ref(end)?;
+        Some((sr, sc, er, ec))
+    } else {
+        // Single cell reference
+        if !validate_ref(&cleaned) {
+            return None;
+        }
+        let (r, c) = parse_cell_ref(&cleaned)?;
+        Some((r, c, r, c))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +233,80 @@ mod tests {
     fn test_contiguous_empty() {
         let ranges = find_contiguous_ranges(&[]);
         assert!(ranges.is_empty());
+    }
+
+    // --- is_inside_string ---
+
+    #[test]
+    fn test_not_inside_string() {
+        assert!(!is_inside_string("SUM(A1)", 0));
+    }
+
+    #[test]
+    fn test_inside_string() {
+        // Position 5 is inside the quoted portion: "hello"
+        assert!(is_inside_string("=\"hello\"", 5));
+    }
+
+    #[test]
+    fn test_after_string() {
+        // Position 8 is after the closing quote
+        assert!(!is_inside_string("=\"hello\"+A1", 8));
+    }
+
+    // --- extract_args ---
+
+    #[test]
+    fn test_extract_args_simple() {
+        let args = extract_args("SUM(A1,B1,C1)", 3).unwrap();
+        assert_eq!(args, vec!["A1", "B1", "C1"]);
+    }
+
+    #[test]
+    fn test_extract_args_nested() {
+        let args = extract_args("SUM(IF(cond,A1,A2),B1)", 3).unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "IF(cond,A1,A2)");
+        assert_eq!(args[1], "B1");
+    }
+
+    #[test]
+    fn test_extract_args_single() {
+        let args = extract_args("SUM(A1:A10)", 3).unwrap();
+        assert_eq!(args, vec!["A1:A10"]);
+    }
+
+    #[test]
+    fn test_extract_args_empty_parens() {
+        let args = extract_args("NOW()", 3).unwrap();
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_extract_args_unbalanced() {
+        assert!(extract_args("SUM(A1,B1", 3).is_none());
+    }
+
+    // --- parse_formula_range ---
+
+    #[test]
+    fn test_parse_range() {
+        assert_eq!(parse_formula_range("A1:B10"), Some((0, 0, 9, 1)));
+    }
+
+    #[test]
+    fn test_parse_range_absolute() {
+        assert_eq!(parse_formula_range("$A$1:$B$10"), Some((0, 0, 9, 1)));
+    }
+
+    #[test]
+    fn test_parse_single_cell() {
+        assert_eq!(parse_formula_range("C5"), Some((4, 2, 4, 2)));
+    }
+
+    #[test]
+    fn test_parse_whole_column() {
+        // Whole-column refs like A:A have no row digits → parse_cell_ref returns None
+        assert_eq!(parse_formula_range("A:A"), None);
     }
 }

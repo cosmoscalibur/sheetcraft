@@ -3,6 +3,7 @@
 //! Description: Identifies lookup functions (VLOOKUP, HLOOKUP, MATCH, LOOKUP)
 //! that use approximate match, which is error-prone with unsorted data.
 
+use super::helpers::{extract_args, is_inside_string};
 use super::{LinterContext, RuleCategory, WalkerRule};
 use crate::reader::{Cell, Sheet};
 use crate::violation::{
@@ -127,23 +128,8 @@ impl WalkerRule for ApproximateLookupRule {
     }
 }
 
-/// Check if a position in the formula is inside a double-quoted string literal.
-fn is_inside_string(formula: &str, pos: usize) -> bool {
-    let mut in_string = false;
-    for (i, ch) in formula.char_indices() {
-        if i >= pos {
-            break;
-        }
-        if ch == '"' {
-            in_string = !in_string;
-        }
-    }
-    in_string
-}
-
-/// Extract the argument list from a function call starting at `paren_pos`
-/// (the position of the opening `(`), then check if the argument at `arg_idx`
-/// indicates exact match (FALSE or 0).
+/// Check if the argument at `arg_idx` in a function call starting at
+/// `paren_pos` indicates exact match (FALSE or 0).
 ///
 /// Returns `true` if the argument exists and is an exact-match indicator.
 fn has_exact_match_arg(formula: &str, paren_pos: usize, arg_idx: usize) -> bool {
@@ -161,62 +147,6 @@ fn has_exact_match_arg(formula: &str, paren_pos: usize, arg_idx: usize) -> bool 
 
     // Exact-match indicators
     matches!(arg_upper.as_str(), "FALSE" | "0")
-}
-
-/// Extract function arguments by balancing parentheses from `paren_pos`.
-/// `paren_pos` is the index of the opening `(`.
-///
-/// Returns `None` if the parentheses are unbalanced.
-/// Returns `Some(Vec<String>)` with each argument as a string.
-fn extract_args(formula: &str, paren_pos: usize) -> Option<Vec<String>> {
-    let bytes = formula.as_bytes();
-    if paren_pos >= bytes.len() || bytes[paren_pos] != b'(' {
-        return None;
-    }
-
-    let mut depth = 0;
-    let mut args = Vec::new();
-    let mut current_arg = String::new();
-    let mut in_string = false;
-
-    // SAFETY: We only match ASCII chars (, ) , " whose byte values (0x22, 0x28–0x2C)
-    // cannot appear inside multi-byte UTF-8 sequences (all continuation bytes are >= 0x80).
-    for &b in &bytes[paren_pos..] {
-        match b {
-            b'"' => {
-                in_string = !in_string;
-                current_arg.push(b as char);
-            }
-            b'(' if !in_string => {
-                depth += 1;
-                if depth > 1 {
-                    current_arg.push('(');
-                }
-            }
-            b')' if !in_string => {
-                depth -= 1;
-                if depth == 0 {
-                    // End of function call
-                    if !current_arg.is_empty() || !args.is_empty() {
-                        args.push(current_arg);
-                    }
-                    return Some(args);
-                }
-                current_arg.push(')');
-            }
-            b',' if !in_string && depth == 1 => {
-                args.push(current_arg);
-                current_arg = String::new();
-            }
-            _ => {
-                if depth >= 1 {
-                    current_arg.push(b as char);
-                }
-            }
-        }
-    }
-
-    None // Unbalanced parentheses
 }
 
 #[cfg(test)]
