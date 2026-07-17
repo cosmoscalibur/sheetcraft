@@ -13,7 +13,7 @@ The suite consists of three specialized CLI tools:
 
 ## Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) ≥ 1.85 (edition 2024)
+- [Rust](https://www.rust-lang.org/tools/install) ≥ 1.88 (edition 2024)
 
 ## Installation
 
@@ -90,13 +90,16 @@ sheetlint workbook.xlsx --config sheetlint.toml
 sheetlint workbook.xlsx --format json > report.json
 ```
 
-**Key Rules:**
+**Example Rules:**
 
-- `ERR001`: Error cells (#DIV/0!, etc.)
-- `SEC001`: External workbook references
-- `PERF006`: Excessive conditional formatting
-- `UX002`: Inconsistent date formats
-- `SM001`: Excessive sheet counts
+- `ERR102`: Excel error cells (#DIV/0!, etc.)
+- `EXT802`: External workbook references
+- `CPX503`: Excessive conditional formatting
+- `DATA703`: Inconsistent date formats
+- `CPX501`: Excessive sheet counts
+
+See the [rule reference](sheetlint/README.md#rule-reference) for the full,
+authoritative catalog.
 
 ### 2. sheetstats
 

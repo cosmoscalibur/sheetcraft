@@ -2,3 +2,6 @@
 target/
 content.xml
 tests/production
+
+# Tooling caches
+.rumdl_cache/

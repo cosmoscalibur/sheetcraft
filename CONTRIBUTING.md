@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the SheetRS Suite.
 
 ## Development Setup
 
-**Prerequisites**: Rust ≥ 1.85 (edition 2024).
+**Prerequisites**: Rust ≥ 1.88 (edition 2024).
 
 ```bash
 git clone https://github.com/cosmoscalibur/sheetrs.git
@@ -51,6 +51,19 @@ cargo clippy -- -D warnings
 
 See [docs/coding-patterns.md](docs/coding-patterns.md) for architecture
 conventions, naming patterns, and domain-specific guidelines.
+
+## Documentation
+
+Keep documentation in sync with the code — a change is not complete until the
+docs match it:
+
+| Change | Update |
+| ------ | ------ |
+| New/changed lint rule | `sheetlint/README.md` rule reference; `docs/coding-patterns.md` if it introduces a pattern |
+| CLI args or behavior | the tool README (`sheetlint`/`sheetstats`/`sheetcli`); `README.md` if the getting-started experience changes |
+| Config format (`sheetlint.toml`) | `docs/coding-patterns.md`; the relevant tool README |
+| Module layout or new crate | `ARCHITECTURE.md`; `docs/README.md`; `README.md` project structure |
+| Dependencies or commands | `README.md`; this guide |
 
 ## Changelog Fragments
 
