@@ -654,10 +654,10 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                             current_data_style_name =
                                                 attr.unescape_value()?.to_string();
                                         }
-                                        b"number:automatic-order" => {
-                                            if attr.value.as_ref() == b"true" {
-                                                automatic_order = true;
-                                            }
+                                        b"number:automatic-order"
+                                            if attr.value.as_ref() == b"true" =>
+                                        {
+                                            automatic_order = true;
                                         }
                                         _ => {}
                                     }
@@ -679,10 +679,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
 
                                 for attr in e.attributes().flatten() {
                                     match attr.key.as_ref() {
-                                        b"style:family" => {
-                                            if attr.value.as_ref() == b"table-cell" {
-                                                is_cell_style = true;
-                                            }
+                                        b"style:family" if attr.value.as_ref() == b"table-cell" => {
+                                            is_cell_style = true;
                                         }
                                         b"style:name" => {
                                             style_name = attr.unescape_value()?.to_string();
@@ -722,10 +720,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         b"number:style" => {
                                             long = attr.value.as_ref() == b"long";
                                         }
-                                        b"number:textual" => {
-                                            if attr.value.as_ref() == b"true" {
-                                                textual = true;
-                                            }
+                                        b"number:textual" if attr.value.as_ref() == b"true" => {
+                                            textual = true;
                                         }
                                         _ => {}
                                     }
@@ -780,10 +776,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     b"number:style" => {
                                         long = attr.value.as_ref() == b"long";
                                     }
-                                    b"number:textual" => {
-                                        if attr.value.as_ref() == b"true" {
-                                            textual = true;
-                                        }
+                                    b"number:textual" if attr.value.as_ref() == b"true" => {
+                                        textual = true;
                                     }
                                     _ => {}
                                 }
@@ -819,29 +813,27 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                     Event::Text(e) if in_date_style => {
                         current_format.push_str(e.decode()?.as_ref());
                     }
-                    Event::End(e) => {
-                        if e.name().as_ref() == b"number:date-style" {
-                            if !current_data_style_name.is_empty() {
-                                data_styles.insert(
-                                    current_data_style_name.clone(),
-                                    Arc::from(current_format.as_str()),
-                                );
-                                date_styles.insert(
-                                    current_data_style_name.clone(),
-                                    Arc::from(current_format.as_str()),
-                                );
-                                // Resolve any cell styles that reference this data style
-                                for (cell_style, data_style) in &cell_styles {
-                                    if data_style == &current_data_style_name {
-                                        date_styles.insert(
-                                            cell_style.clone(),
-                                            Arc::from(current_format.as_str()),
-                                        );
-                                    }
+                    Event::End(e) if e.name().as_ref() == b"number:date-style" => {
+                        if !current_data_style_name.is_empty() {
+                            data_styles.insert(
+                                current_data_style_name.clone(),
+                                Arc::from(current_format.as_str()),
+                            );
+                            date_styles.insert(
+                                current_data_style_name.clone(),
+                                Arc::from(current_format.as_str()),
+                            );
+                            // Resolve any cell styles that reference this data style
+                            for (cell_style, data_style) in &cell_styles {
+                                if data_style == &current_data_style_name {
+                                    date_styles.insert(
+                                        cell_style.clone(),
+                                        Arc::from(current_format.as_str()),
+                                    );
                                 }
                             }
-                            in_date_style = false;
                         }
+                        in_date_style = false;
                     }
                     Event::Eof => break,
                     _ => {}
@@ -882,10 +874,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                 b"style:name" => {
                                     current_data_style_name = attr.unescape_value()?.to_string();
                                 }
-                                b"number:automatic-order" => {
-                                    if attr.value.as_ref() == b"true" {
-                                        automatic_order = true;
-                                    }
+                                b"number:automatic-order" if attr.value.as_ref() == b"true" => {
+                                    automatic_order = true;
                                 }
                                 _ => {}
                             }
@@ -982,10 +972,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         b"number:style" => {
                                             long = attr.value.as_ref() == b"long";
                                         }
-                                        b"number:textual" => {
-                                            if attr.value.as_ref() == b"true" {
-                                                textual = true;
-                                            }
+                                        b"number:textual" if attr.value.as_ref() == b"true" => {
+                                            textual = true;
                                         }
                                         _ => {}
                                     }
@@ -1041,10 +1029,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     b"number:style" => {
                                         long = attr.value.as_ref() == b"long";
                                     }
-                                    b"number:textual" => {
-                                        if attr.value.as_ref() == b"true" {
-                                            textual = true;
-                                        }
+                                    b"number:textual" if attr.value.as_ref() == b"true" => {
+                                        textual = true;
                                     }
                                     _ => {}
                                 }
@@ -1202,12 +1188,11 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             let mut repeated = 1u32;
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"table:visibility" => {
-                                        if attr.value.as_ref() == b"collapse"
-                                            || attr.value.as_ref() == b"filter"
-                                        {
-                                            hidden = true;
-                                        }
+                                    b"table:visibility"
+                                        if (attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter") =>
+                                    {
+                                        hidden = true;
                                     }
                                     b"table:number-columns-repeated" => {
                                         repeated =
@@ -1247,12 +1232,11 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                             let mut repeated = 1u32;
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"table:visibility" => {
-                                        if attr.value.as_ref() == b"collapse"
-                                            || attr.value.as_ref() == b"filter"
-                                        {
-                                            hidden = true;
-                                        }
+                                    b"table:visibility"
+                                        if (attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter") =>
+                                    {
+                                        hidden = true;
                                     }
                                     b"table:number-columns-repeated" => {
                                         repeated =
@@ -1282,12 +1266,11 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         row_repeated =
                                             attr.unescape_value()?.parse::<u32>().unwrap_or(1);
                                     }
-                                    b"table:visibility" => {
-                                        if attr.value.as_ref() == b"collapse"
-                                            || attr.value.as_ref() == b"filter"
-                                        {
-                                            hidden = true;
-                                        }
+                                    b"table:visibility"
+                                        if (attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter") =>
+                                    {
+                                        hidden = true;
                                     }
                                     _ => {}
                                 }
@@ -1318,12 +1301,11 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                         row_repeated =
                                             attr.unescape_value()?.parse::<u32>().unwrap_or(1);
                                     }
-                                    b"table:visibility" => {
-                                        if attr.value.as_ref() == b"collapse"
-                                            || attr.value.as_ref() == b"filter"
-                                        {
-                                            hidden = true;
-                                        }
+                                    b"table:visibility"
+                                        if (attr.value.as_ref() == b"collapse"
+                                            || attr.value.as_ref() == b"filter") =>
+                                    {
+                                        hidden = true;
                                     }
                                     _ => {}
                                 }
@@ -1386,10 +1368,8 @@ impl<'a, R: std::io::Read + std::io::Seek> WorkbookReader for OdsReader<'a, R> {
                                     b"table:style-name" => {
                                         style_name = attr.unescape_value()?.to_string();
                                     }
-                                    b"calcext:value-type" => {
-                                        if attr.value.as_ref() == b"error" {
-                                            is_error_cell = true;
-                                        }
+                                    b"calcext:value-type" if attr.value.as_ref() == b"error" => {
+                                        is_error_cell = true;
                                     }
                                     b"office:value"
                                     | b"office:string-value"
@@ -2057,14 +2037,12 @@ fn extract_date1904_ods(
 
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Start(e) | Event::Empty(e) => {
-                if e.name().as_ref() == b"table:null-date" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"table:date-value" {
-                            let value = attr.unescape_value()?;
-                            // 1904 date system uses 1904-01-01 as epoch
-                            return Ok(value.starts_with("1904"));
-                        }
+            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"table:null-date" => {
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"table:date-value" {
+                        let value = attr.unescape_value()?;
+                        // 1904 date system uses 1904-01-01 as epoch
+                        return Ok(value.starts_with("1904"));
                     }
                 }
             }

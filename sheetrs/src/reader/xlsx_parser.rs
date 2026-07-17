@@ -28,21 +28,19 @@ pub fn get_xlsx_sheet_path(
         let mut buf = Vec::new();
         loop {
             match reader.read_event_into(&mut buf)? {
-                Event::Start(e) | Event::Empty(e) => {
-                    if e.name().as_ref() == b"sheet" {
-                        let mut name = String::new();
-                        let mut r_id = String::new();
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"name" => name = attr.unescape_value()?.to_string(),
-                                b"r:id" => r_id = attr.unescape_value()?.to_string(),
-                                _ => {}
-                            }
+                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"sheet" => {
+                    let mut name = String::new();
+                    let mut r_id = String::new();
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"name" => name = attr.unescape_value()?.to_string(),
+                            b"r:id" => r_id = attr.unescape_value()?.to_string(),
+                            _ => {}
                         }
-                        if name == sheet_name {
-                            rid = r_id;
-                            break;
-                        }
+                    }
+                    if name == sheet_name {
+                        rid = r_id;
+                        break;
                     }
                 }
                 Event::Eof => break,
@@ -71,21 +69,19 @@ pub fn get_xlsx_sheet_path(
         let mut buf = Vec::new();
         loop {
             match reader.read_event_into(&mut buf)? {
-                Event::Start(e) | Event::Empty(e) => {
-                    if e.name().as_ref() == b"Relationship" {
-                        let mut id = String::new();
-                        let mut t = String::new();
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"Id" => id = attr.unescape_value()?.to_string(),
-                                b"Target" => t = attr.unescape_value()?.to_string(),
-                                _ => {}
-                            }
+                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"Relationship" => {
+                    let mut id = String::new();
+                    let mut t = String::new();
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"Id" => id = attr.unescape_value()?.to_string(),
+                            b"Target" => t = attr.unescape_value()?.to_string(),
+                            _ => {}
                         }
-                        if id == rid {
-                            target = t;
-                            break;
-                        }
+                    }
+                    if id == rid {
+                        target = t;
+                        break;
                     }
                 }
                 Event::Eof => break,
@@ -207,48 +203,45 @@ pub fn extract_tables_from_xlsx(
         let mut buf = Vec::new();
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                    if e.name().as_ref() == b"table" {
-                        let mut name = String::new();
-                        let mut ref_sqref = String::new();
+                Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"table" => {
+                    let mut name = String::new();
+                    let mut ref_sqref = String::new();
 
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"name" | b"displayName" => {
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                                b"name" | b"displayName"
                                     // displayName is usually the safe name, name might be id.
                                     // Spec says: name is collection name, displayName is unique name for formulas.
                                     // DisplayName is prioritized, but if name is empty, use either.
-                                    if name.is_empty() || attr.key.as_ref() == b"displayName" {
+                                    if (name.is_empty() || attr.key.as_ref() == b"displayName") => {
                                         name = attr.unescape_value()?.to_string();
                                     }
-                                }
                                 b"ref" => {
                                     ref_sqref = attr.unescape_value()?.to_string();
                                 }
                                 _ => {}
                             }
-                        }
-
-                        if !name.is_empty() && !ref_sqref.is_empty() {
-                            // Tables are usually local to the sheet they are in, but the table definition
-                            // DOES NOT contain the sheet name in 'ref' (it's just A1:B2).
-                            // However, defined names MUST include sheet name to be useful globally.
-                            //
-                            // The exact sheet ownership is not easily known from table XML alone without relationships.
-                            // But Excel tables HAVE a unique name across the workbook.
-                            // A formula refers to it by name `Table1`, not `Sheet1!Table1`.
-                            // So storing just the name is sufficient.
-                            //
-                            // PERF001 checks for unused named ranges by looking for the name in formulas.
-                            // If users use `=SUM(Table1)`, `extract_formulas` will return strings containing `Table1`.
-                            // Registering `Table1` as a defined name enables this check.
-                            // The associated value (range) is primarily for information/reporting.
-
-                            current_tables.insert(name, ref_sqref);
-                        }
-                        // Only the top level table element is processed
-                        break;
                     }
+
+                    if !name.is_empty() && !ref_sqref.is_empty() {
+                        // Tables are usually local to the sheet they are in, but the table definition
+                        // DOES NOT contain the sheet name in 'ref' (it's just A1:B2).
+                        // However, defined names MUST include sheet name to be useful globally.
+                        //
+                        // The exact sheet ownership is not easily known from table XML alone without relationships.
+                        // But Excel tables HAVE a unique name across the workbook.
+                        // A formula refers to it by name `Table1`, not `Sheet1!Table1`.
+                        // So storing just the name is sufficient.
+                        //
+                        // PERF001 checks for unused named ranges by looking for the name in formulas.
+                        // If users use `=SUM(Table1)`, `extract_formulas` will return strings containing `Table1`.
+                        // Registering `Table1` as a defined name enables this check.
+                        // The associated value (range) is primarily for information/reporting.
+
+                        current_tables.insert(name, ref_sqref);
+                    }
+                    // Only the top level table element is processed
+                    break;
                 }
                 Ok(Event::Eof) => break,
                 Err(_) => break,
@@ -427,13 +420,11 @@ fn extract_date1904_xlsx(
 
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Start(e) | Event::Empty(e) => {
-                if e.name().as_ref() == b"workbookPr" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"date1904" {
-                            let value = attr.unescape_value()?;
-                            return Ok(value == "1" || value.eq_ignore_ascii_case("true"));
-                        }
+            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"workbookPr" => {
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"date1904" {
+                        let value = attr.unescape_value()?;
+                        return Ok(value == "1" || value.eq_ignore_ascii_case("true"));
                     }
                 }
             }
@@ -699,12 +690,10 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
         let mut buf = Vec::new();
         loop {
             match reader.read_event_into(&mut buf)? {
-                Event::Start(e) | Event::Empty(e) => {
-                    if e.name().as_ref() == b"sheet" {
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
-                                names.push(attr.unescape_value()?.to_string());
-                            }
+                Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"sheet" => {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"name" {
+                            names.push(attr.unescape_value()?.to_string());
                         }
                     }
                 }
@@ -1013,10 +1002,8 @@ impl<'a, R: std::io::Read + std::io::Seek> XlsxReader<'a, R> {
                     }
                     _ => {}
                 },
-                Event::End(e) => {
-                    if e.name().as_ref() == b"worksheet" {
-                        break;
-                    }
+                Event::End(e) if e.name().as_ref() == b"worksheet" => {
+                    break;
                 }
                 Event::Eof => break,
                 _ => {}
@@ -1273,10 +1260,8 @@ pub fn count_conditional_formatting(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"cfRule" {
-                    cf_count += 1;
-                }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"cfRule" => {
+                cf_count += 1;
             }
             Ok(Event::Eof) => break,
             Err(e) => {
@@ -1345,10 +1330,8 @@ pub fn extract_hidden_sheets_from_xlsx(
                     _ => {}
                 }
             }
-            Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"sheets" {
-                    in_sheets = false;
-                }
+            Ok(Event::End(e)) if e.name().as_ref() == b"sheets" => {
+                in_sheets = false;
             }
             Ok(Event::Eof) => break,
             Err(e) => return Err(anyhow::anyhow!("XML parsing error: {}", e)),
@@ -1482,18 +1465,16 @@ pub fn extract_merged_cells_from_xlsx(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"mergeCell" {
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr
-                            && attr.key.as_ref() == b"ref"
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"mergeCell" => {
+                for attr in e.attributes() {
+                    if let Ok(attr) = attr
+                        && attr.key.as_ref() == b"ref"
+                    {
+                        let ref_str = attr.unescape_value()?;
+                        if let Some((start_row, start_col, end_row, end_col)) =
+                            parse_cell_range(&ref_str)
                         {
-                            let ref_str = attr.unescape_value()?;
-                            if let Some((start_row, start_col, end_row, end_col)) =
-                                parse_cell_range(&ref_str)
-                            {
-                                merged_cells.push((start_row, start_col, end_row, end_col));
-                            }
+                            merged_cells.push((start_row, start_col, end_row, end_col));
                         }
                     }
                 }
@@ -1788,10 +1769,8 @@ pub fn parse_styles(
                     _ => {}
                 }
             }
-            Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"cellXfs" {
-                    in_cell_xfs = false;
-                }
+            Ok(Event::End(e)) if e.name().as_ref() == b"cellXfs" => {
+                in_cell_xfs = false;
             }
             Ok(Event::Eof) => break,
             _ => {}
@@ -1826,36 +1805,34 @@ pub fn extract_cell_style_indices_from_xlsx(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"c" {
-                    // Cell element `c`
-                    let mut row = 0u32;
-                    let mut col = 0u32;
-                    let mut style_index = 0usize;
-                    let mut has_style = false;
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"c" => {
+                // Cell element `c`
+                let mut row = 0u32;
+                let mut col = 0u32;
+                let mut style_index = 0usize;
+                let mut has_style = false;
 
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"r" => {
-                                let r_str = attr.unescape_value()?;
-                                if let Some((r, c)) = parse_cell_ref(&r_str) {
-                                    row = r;
-                                    col = c;
-                                }
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"r" => {
+                            let r_str = attr.unescape_value()?;
+                            if let Some((r, c)) = parse_cell_ref(&r_str) {
+                                row = r;
+                                col = c;
                             }
-                            b"s" => {
-                                if let Ok(val) = attr.unescape_value()?.parse::<usize>() {
-                                    style_index = val;
-                                    has_style = true;
-                                }
-                            }
-                            _ => {}
                         }
+                        b"s" => {
+                            if let Ok(val) = attr.unescape_value()?.parse::<usize>() {
+                                style_index = val;
+                                has_style = true;
+                            }
+                        }
+                        _ => {}
                     }
+                }
 
-                    if has_style {
-                        cell_styles.insert((row, col), style_index);
-                    }
+                if has_style {
+                    cell_styles.insert((row, col), style_index);
                 }
             }
             Ok(Event::Eof) => break,
@@ -1946,10 +1923,8 @@ pub fn extract_formulas_from_xlsx(
                     formulas.insert((r, c), formula_text);
                 }
             }
-            Event::End(e) => {
-                if e.name().as_ref() == b"f" {
-                    in_formula = false;
-                }
+            Event::End(e) if e.name().as_ref() == b"f" => {
+                in_formula = false;
             }
             Event::Eof => break,
             _ => {}
